@@ -28,7 +28,7 @@ normalise extracted content
 split content into traceable chunks
       |
       v
-store document, chunks and ingestion result locally
+store original, metadata and chunks locally
 ```
 
 Each stored chunk should retain enough source metadata to identify its original
@@ -39,19 +39,22 @@ leaving a partially ingested document behind.
 
 - PDF, plain-text and Markdown files are the intended initial formats.
 - The default maximum document size is 25 MB and can be configured.
-- Storage is local; its implementation will be chosen with the ingestion work.
+- Source files are stored locally with metadata and chunks in SQLite.
 - Parsing, chunking and persistence remain separate components so they can be
   tested and replaced independently.
-- Duplicate handling, scanned-PDF optical character recognition and additional
-  formats will be decided during ingestion design rather than assumed here.
+- Exact duplicates are detected with a SHA-256 content fingerprint.
+- Scanned-PDF optical character recognition and additional formats are
+  deliberately outside the initial version.
 
 ## Package boundaries
 
 - `maintenance_assistant.config` owns runtime settings and validation.
 - `maintenance_assistant.ingestion` will own the ingestion workflow and its
   domain types.
-- Storage adapters will sit behind an interface defined by the needs of the
-  ingestion workflow.
+- `maintenance_assistant.ingestion.storage` owns the local SQLite database and
+  controlled source-file copies.
+- `maintenance_assistant.cli` provides the first runnable interface to the
+  ingestion service.
 
 These boundaries are intentionally small and may evolve as real pipeline
 behaviour is implemented and tested.
