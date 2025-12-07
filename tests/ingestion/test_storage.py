@@ -1,4 +1,6 @@
+from hashlib import sha256
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -17,13 +19,13 @@ from maintenance_assistant.ingestion import (
 )
 
 
-def _document(path: Path, content_hash: str = "content-hash") -> ExtractedDocument:
+def _document(path: Path) -> ExtractedDocument:
     source = ValidatedDocument(
         path=path,
         filename=path.name,
         format=DocumentFormat.TEXT,
         size_bytes=path.stat().st_size,
-        content_hash=content_hash,
+        content_hash=sha256(path.read_bytes()).hexdigest(),
     )
     return ExtractedDocument(
         source=source,
@@ -65,7 +67,7 @@ def test_store_finds_and_rejects_duplicate_content(tmp_path: Path) -> None:
     store = LocalDocumentStore(tmp_path / "data")
     first = store.save(_document(source), [_chunk()])
 
-    assert store.find_by_hash("content-hash") == first
+    assert store.find_by_hash(first.content_hash) == first
     with pytest.raises(DuplicateDocumentError) as captured:
         store.save(_document(source), [_chunk()])
 
@@ -85,7 +87,7 @@ def test_store_rolls_back_files_when_chunk_storage_fails(tmp_path: Path) -> None
         store.save(_document(source), [_chunk(), _chunk()])
 
     assert captured.value.code is IngestionErrorCode.STORAGE_FAILED
-    assert store.find_by_hash("content-hash") is None
+    assert store.find_by_hash(sha256(source.read_bytes()).hexdigest()) is None
     assert list(store.documents_directory.iterdir()) == []
 
 
@@ -97,3 +99,21 @@ def test_store_requires_at_least_one_chunk(tmp_path: Path) -> None:
         LocalDocumentStore(tmp_path / "data").save(_document(source), [])
 
     assert captured.value.code is IngestionErrorCode.STORAGE_FAILED
+
+
+def test_store_rejects_source_that_changes_after_validation(tmp_path: Path) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Check pressure.", encoding="utf-8")
+    store = LocalDocumentStore(tmp_path / "data")
+
+    with (
+        patch(
+            "maintenance_assistant.ingestion.storage._file_hash",
+            return_value="changed-hash",
+        ),
+        pytest.raises(IngestionError) as captured,
+    ):
+        store.save(_document(source), [_chunk()])
+
+    assert captured.value.code is IngestionErrorCode.INVALID_DOCUMENT
+    assert list(store.documents_directory.iterdir()) == []

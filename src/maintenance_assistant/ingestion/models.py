@@ -16,6 +16,13 @@ class DocumentFormat(StrEnum):
     MARKDOWN = "markdown"
 
 
+class IngestionStatus(StrEnum):
+    """Successful outcomes returned by the ingestion service."""
+
+    COMPLETED = "completed"
+    ALREADY_EXISTS = "already_exists"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidatedDocument:
     """A local document that is safe to pass to an extractor."""
@@ -122,3 +129,11 @@ class StoredChunk:
     text: str
     character_count: int
     location: ChunkLocation
+
+
+@dataclass(frozen=True, slots=True)
+class IngestionResult:
+    """The successful outcome of an end-to-end ingestion request."""
+
+    status: IngestionStatus
+    document: StoredDocument

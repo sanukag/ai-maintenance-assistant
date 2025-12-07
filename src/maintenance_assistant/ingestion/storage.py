@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from hashlib import sha256
 import json
 from pathlib import Path
 import shutil
@@ -148,6 +149,11 @@ class LocalDocumentStore:
 
         try:
             shutil.copy2(document.source.path, copied_path)
+            if _file_hash(copied_path) != document.source.content_hash:
+                raise IngestionError(
+                    IngestionErrorCode.INVALID_DOCUMENT,
+                    "Document changed while it was being ingested; try again",
+                )
             with self._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 duplicate = connection.execute(
@@ -271,3 +277,11 @@ class LocalDocumentStore:
                 line_end=row["line_end"],
             ),
         )
+
+
+def _file_hash(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as source:
+        while block := source.read(64 * 1024):
+            digest.update(block)
+    return digest.hexdigest()

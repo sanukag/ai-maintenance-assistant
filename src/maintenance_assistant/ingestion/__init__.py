@@ -12,6 +12,8 @@ from maintenance_assistant.ingestion.models import (
     DocumentFormat,
     ExtractedDocument,
     ExtractedSegment,
+    IngestionResult,
+    IngestionStatus,
     NormalisedDocument,
     NormalisedSegment,
     PreparedChunk,
@@ -21,6 +23,7 @@ from maintenance_assistant.ingestion.models import (
     ValidatedDocument,
 )
 from maintenance_assistant.ingestion.normalisation import normalise_document
+from maintenance_assistant.ingestion.service import IngestionService
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
 from maintenance_assistant.ingestion.validation import validate_document
 
@@ -32,6 +35,9 @@ __all__ = [
     "ExtractedSegment",
     "IngestionError",
     "IngestionErrorCode",
+    "IngestionResult",
+    "IngestionService",
+    "IngestionStatus",
     "NormalisedDocument",
     "NormalisedSegment",
     "PreparedChunk",
