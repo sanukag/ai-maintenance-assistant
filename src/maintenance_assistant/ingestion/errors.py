@@ -28,3 +28,14 @@ class IngestionError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+class DuplicateDocumentError(IngestionError):
+    """Raised when an identical document is already stored."""
+
+    def __init__(self, document_id: str) -> None:
+        super().__init__(
+            IngestionErrorCode.DUPLICATE_DOCUMENT,
+            f"An identical document is already stored as {document_id}",
+        )
+        self.document_id = document_id

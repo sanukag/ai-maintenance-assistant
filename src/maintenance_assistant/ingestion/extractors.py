@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from pypdf import PdfReader
+from pypdf import PdfReader, __version__ as pypdf_version
 from pypdf.errors import PdfReadError
 
 from maintenance_assistant.ingestion.errors import IngestionError, IngestionErrorCode
@@ -127,6 +127,8 @@ def _extract_pdf(document: ValidatedDocument) -> ExtractedDocument:
         title=(metadata_title or document.path.stem).strip(),
         segments=segments,
         page_count=len(reader.pages),
+        extractor_name="pypdf",
+        extractor_version=pypdf_version,
     )
 
 

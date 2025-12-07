@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
@@ -52,6 +53,8 @@ class ExtractedDocument:
     title: str
     segments: tuple[ExtractedSegment, ...]
     page_count: int | None = None
+    extractor_name: str = "built-in"
+    extractor_version: str = "1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +88,36 @@ class ChunkLocation:
 class PreparedChunk:
     """A traceable piece of document content ready for storage."""
 
+    sequence: int
+    text: str
+    character_count: int
+    location: ChunkLocation
+
+
+@dataclass(frozen=True, slots=True)
+class StoredDocument:
+    """A document record committed to local storage."""
+
+    id: str
+    content_hash: str
+    original_filename: str
+    stored_path: Path
+    format: DocumentFormat
+    size_bytes: int
+    title: str
+    page_count: int | None
+    chunk_count: int
+    extractor_name: str
+    extractor_version: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class StoredChunk:
+    """A locally persisted chunk and its source range."""
+
+    id: str
+    document_id: str
     sequence: int
     text: str
     character_count: int
