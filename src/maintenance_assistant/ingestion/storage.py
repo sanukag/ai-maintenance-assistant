@@ -144,6 +144,36 @@ class LocalDocumentStore:
             ).fetchone()
         return self._document_from_row(row) if row else None
 
+    def list_documents(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[StoredDocument, ...]:
+        """Return stored documents from newest to oldest."""
+
+        if limit < 1:
+            raise ValueError("limit must be greater than zero")
+        if offset < 0:
+            raise ValueError("offset must be zero or greater")
+        self.initialise()
+        try:
+            with self._connection() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT * FROM documents
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (limit, offset),
+                ).fetchall()
+        except sqlite3.Error as error:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Local document storage could not be queried",
+            ) from error
+        return tuple(self._document_from_row(row) for row in rows)
+
     def list_chunks(self, document_id: str) -> tuple[StoredChunk, ...]:
         """Return stored chunks in document order."""
 

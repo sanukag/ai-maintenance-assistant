@@ -94,6 +94,36 @@ def test_store_finds_and_rejects_duplicate_content(tmp_path: Path) -> None:
     assert stored_directories == [first.stored_path.parent]
 
 
+def test_store_lists_documents_with_pagination(tmp_path: Path) -> None:
+    store = LocalDocumentStore(tmp_path / "data")
+    first_source = tmp_path / "first.txt"
+    first_source.write_text("First procedure.", encoding="utf-8")
+    first = store.save(_document(first_source), [_chunk(text="First procedure.")])
+    second_source = tmp_path / "second.txt"
+    second_source.write_text("Second procedure.", encoding="utf-8")
+    second = store.save(_document(second_source), [_chunk(text="Second procedure.")])
+
+    assert store.list_documents(limit=1) == (second,)
+    assert store.list_documents(limit=1, offset=1) == (first,)
+
+
+@pytest.mark.parametrize(
+    ("limit", "offset", "message"),
+    [(0, 0, "limit"), (1, -1, "offset")],
+)
+def test_store_rejects_invalid_document_pagination(
+    tmp_path: Path,
+    limit: int,
+    offset: int,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        LocalDocumentStore(tmp_path / "data").list_documents(
+            limit=limit,
+            offset=offset,
+        )
+
+
 def test_store_rolls_back_files_when_chunk_storage_fails(tmp_path: Path) -> None:
     source = tmp_path / "manual.txt"
     source.write_text("Check pressure.", encoding="utf-8")
