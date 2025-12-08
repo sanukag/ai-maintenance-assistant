@@ -9,16 +9,21 @@ description = "A local-first assistant for maintenance knowledge"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.115,<1",
     "openai>=2,<3",
     "pypdf>=5.7,<7",
+    "python-multipart>=0.0.20,<1",
+    "uvicorn>=0.34,<1",
 ]
 
 [project.scripts]
 ama-ingest = "maintenance_assistant.cli:main"
+ama-api = "maintenance_assistant.api.__main__:main"
 ama-search = "maintenance_assistant.cli:search_main"
 
 [project.optional-dependencies]
 test = [
+    "httpx2>=2,<3",
     "pytest>=8.3,<9",
     "pytest-cov>=6,<7",
 ]
