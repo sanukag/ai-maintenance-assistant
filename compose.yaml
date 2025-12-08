@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AMA_DATA_DIRECTORY: /app/data
+      AMA_MAX_DOCUMENT_SIZE_MB: ${AMA_MAX_DOCUMENT_SIZE_MB:-25}
+      AMA_SUPPORTED_FILE_TYPES: ${AMA_SUPPORTED_FILE_TYPES:-.pdf,.txt,.md}
+      AMA_CHUNK_SIZE_CHARACTERS: ${AMA_CHUNK_SIZE_CHARACTERS:-2400}
+      AMA_CHUNK_OVERLAP_CHARACTERS: ${AMA_CHUNK_OVERLAP_CHARACTERS:-400}
+      AMA_LOG_LEVEL: ${AMA_LOG_LEVEL:-INFO}
+      AMA_EMBEDDING_PROVIDER: ${AMA_EMBEDDING_PROVIDER:-none}
+      AMA_EMBEDDING_MODEL: ${AMA_EMBEDDING_MODEL:-text-embedding-3-small}
+      AMA_EMBEDDING_DIMENSIONS: ${AMA_EMBEDDING_DIMENSIONS:-512}
+      AMA_EMBEDDING_BATCH_SIZE: ${AMA_EMBEDDING_BATCH_SIZE:-128}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - 127.0.0.1:${AMA_API_PORT:-8000}:8000
+    volumes:
+      - maintenance-data:/app/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).read()
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+
+volumes:
+  maintenance-data:
