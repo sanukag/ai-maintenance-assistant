@@ -12,6 +12,9 @@ The project tests ingestion at three levels:
   failures, dimensions and non-finite vectors without making paid API calls.
 - Vector tests cover schema-version migration, float storage, missing-vector
   backfill, cosine ranking and semantic-search output.
+- API integration tests exercise health reporting, bounded multipart uploads,
+  duplicate handling, document browsing, structured errors, OpenAPI generation
+  and semantic search through the real local services.
 
 Run the complete suite with:
 

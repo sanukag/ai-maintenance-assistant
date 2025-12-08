@@ -71,7 +71,30 @@ The initial provider uses `text-embedding-3-small` with 512 dimensions. Both
 values are configurable. Search must use the same provider configuration used
 to create the stored vectors.
 
+## Run the application API
+
+Start the local HTTP API after installing the project:
+
+```bash
+ama-api
+```
+
+The service listens on `http://127.0.0.1:8000` by default. Open
+`http://127.0.0.1:8000/docs` for the interactive API documentation, or upload a
+document directly:
+
+```bash
+curl -F "file=@/path/to/maintenance-manual.pdf" \
+  http://127.0.0.1:8000/documents
+```
+
+Document upload, metadata browsing and health checks work with the default
+local-only embedding configuration. Semantic search requires embeddings to be
+enabled before the API starts. The initial API has no authentication and is
+intended for local development only; do not expose it to an untrusted network.
+
 See [`docs/document-ingestion.md`](docs/document-ingestion.md) for pipeline,
 storage and limitation details. See
 [`docs/embeddings-and-vector-search.md`](docs/embeddings-and-vector-search.md)
-for the embedding and retrieval design.
+for the embedding and retrieval design. The HTTP routes and examples are in
+[`docs/application-api.md`](docs/application-api.md).

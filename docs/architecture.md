@@ -61,6 +61,8 @@ leaving a partially ingested document behind.
 - `maintenance_assistant.embeddings` owns the provider contract and real OpenAI
   Embeddings API implementation.
 - `maintenance_assistant.retrieval` embeds a query and searches local vectors.
+- `maintenance_assistant.api` owns HTTP validation and response models while
+  delegating ingestion, persistence and retrieval to the domain services.
 - `maintenance_assistant.cli` provides the first runnable interface to the
   ingestion service.
 
