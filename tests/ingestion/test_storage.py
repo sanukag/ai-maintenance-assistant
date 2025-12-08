@@ -142,6 +142,49 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
     connection = sqlite3.connect(database_path)
     try:
         connection.executescript(_SCHEMA_VERSION_1)
+        connection.execute(
+            """
+            INSERT INTO documents (
+                id, content_hash, original_filename, stored_path,
+                document_format, size_bytes, title, page_count, chunk_count,
+                extractor_name, extractor_version, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "existing-document",
+                "existing-hash",
+                "manual.txt",
+                "documents/existing-document/original.txt",
+                "text",
+                20,
+                "Existing manual",
+                None,
+                1,
+                "built-in",
+                "1",
+                "2026-07-13T00:00:00+00:00",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO chunks (
+                id, document_id, sequence, text, character_count,
+                page_start, page_end, headings, line_start, line_end
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "existing-chunk",
+                "existing-document",
+                0,
+                "Existing procedure",
+                18,
+                None,
+                None,
+                "[]",
+                1,
+                1,
+            ),
+        )
         connection.execute("PRAGMA user_version = 1")
         connection.commit()
     finally:
@@ -159,6 +202,9 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
         connection.close()
     assert version == 2
     assert embedding_table == ("embeddings",)
+    store = LocalDocumentStore(data_directory)
+    assert store.get_document("existing-document").title == "Existing manual"
+    assert store.list_chunks("existing-document")[0].text == "Existing procedure"
 
 
 def test_store_saves_vectors_with_new_document(tmp_path: Path) -> None:
