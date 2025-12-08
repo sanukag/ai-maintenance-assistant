@@ -17,10 +17,13 @@ from maintenance_assistant.ingestion.models import (
     NormalisedDocument,
     NormalisedSegment,
     PreparedChunk,
+    PreparedEmbedding,
     SourceLocation,
     StoredChunk,
     StoredDocument,
+    StoredEmbedding,
     ValidatedDocument,
+    VectorSearchResult,
 )
 from maintenance_assistant.ingestion.normalisation import normalise_document
 from maintenance_assistant.ingestion.service import IngestionService
@@ -41,10 +44,13 @@ __all__ = [
     "NormalisedDocument",
     "NormalisedSegment",
     "PreparedChunk",
+    "PreparedEmbedding",
     "SourceLocation",
     "StoredChunk",
     "StoredDocument",
+    "StoredEmbedding",
     "ValidatedDocument",
+    "VectorSearchResult",
     "chunk_document",
     "extract_document",
     "normalise_document",

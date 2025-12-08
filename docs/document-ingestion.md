@@ -6,7 +6,8 @@ The initial ingestion pipeline turns a local PDF, plain-text or Markdown file
 into locally stored, source-aware chunks. These chunks are intended to support
 retrieval and answer citation in later product sections.
 
-Ingestion runs locally and does not call an AI model or external service.
+Validation, parsing, chunking and storage run locally. Embedding is optional and
+calls the explicitly configured provider.
 
 ## Pipeline
 
@@ -21,11 +22,16 @@ Ingestion runs locally and does not call an AI model or external service.
    lines without rewriting the document's meaning.
 6. Split text at structural boundaries using a configurable character budget
    and word-aligned overlap.
-7. Copy the original into controlled local storage and save its metadata and
-   chunks to SQLite in one transaction.
+7. When enabled, create one embedding for every prepared chunk.
+8. Copy the original into controlled local storage and save its metadata,
+   chunks and vectors to SQLite in one transaction.
 
 The source copy is hashed again before storage. Ingestion stops if the document
 changed after validation.
+
+If the document already exists, ingestion checks whether its chunks have
+vectors for the configured model and dimensions. Only missing vectors are
+created and backfilled.
 
 ## Local storage
 
@@ -42,7 +48,8 @@ data/
 
 Generated document identifiers determine storage paths; user-provided
 filenames are retained only as metadata. The SQLite database contains document
-fingerprints, extraction details, creation times and ordered chunks.
+fingerprints, extraction details, creation times, ordered chunks and any
+enabled embeddings.
 
 Each chunk records the source information available for its format:
 
@@ -63,17 +70,24 @@ source copies are removed.
 | `AMA_SUPPORTED_FILE_TYPES` | `.pdf,.txt,.md` | Accepted filename extensions |
 | `AMA_CHUNK_SIZE_CHARACTERS` | `2400` | Maximum characters in a chunk |
 | `AMA_CHUNK_OVERLAP_CHARACTERS` | `400` | Maximum context repeated between chunks |
+| `AMA_EMBEDDING_PROVIDER` | `none` | `none` or the opt-in `openai` provider |
+| `AMA_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model identifier |
+| `AMA_EMBEDDING_DIMENSIONS` | `512` | Stored vector dimensions |
+| `AMA_EMBEDDING_BATCH_SIZE` | `128` | Maximum texts per embedding request |
+| `OPENAI_API_KEY` | none | Required when the OpenAI provider is enabled |
 
 Character limits are intentionally model-independent for the first local
 version. Retrieval can introduce model-specific token counting when its model
 and embedding strategy are selected.
+
+The API key is read from the environment and is never stored in the database.
 
 ## Outcomes and errors
 
 A successful request returns either `completed` or `already_exists`. Failures
 use stable codes such as `unsupported_type`, `file_too_large`,
 `invalid_document`, `encrypted_document`, `no_extractable_text` and
-`storage_failed`.
+`embedding_failed` and `storage_failed`.
 
 The command-line interface prints safe messages. Underlying exceptions remain
 available to application logging without exposing document content.
@@ -85,8 +99,9 @@ available to application logging without exposing document content.
 - Password-protected PDFs are rejected.
 - Text and Markdown documents must use UTF-8 encoding.
 - Exact duplicates are reused; document version relationships are not modelled.
-- There is no graphical upload interface, background queue, vector embedding
-  or semantic retrieval yet.
+- There is no graphical upload interface or background queue yet.
+- Local vector ranking loads matching vectors and calculates cosine similarity
+  in the application process; this is intended for an initial small corpus.
 - Ingestion is intended for a local, single-user process in this version.
 
 These limitations keep the first implementation observable and testable while

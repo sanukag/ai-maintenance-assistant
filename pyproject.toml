@@ -9,11 +9,13 @@ description = "A local-first assistant for maintenance knowledge"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "openai>=2,<3",
     "pypdf>=5.7,<7",
 ]
 
 [project.scripts]
 ama-ingest = "maintenance_assistant.cli:main"
+ama-search = "maintenance_assistant.cli:search_main"
 
 [project.optional-dependencies]
 test = [

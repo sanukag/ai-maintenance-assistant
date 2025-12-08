@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from os import environ
 from pathlib import Path
 from typing import Mapping
 
 DEFAULT_FILE_TYPES = (".pdf", ".txt", ".md")
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+VALID_EMBEDDING_PROVIDERS = frozenset({"none", "openai"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,11 @@ class Settings:
     supported_file_types: tuple[str, ...] = DEFAULT_FILE_TYPES
     chunk_size_characters: int = 2400
     chunk_overlap_characters: int = 400
+    embedding_provider: str = "none"
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 512
+    embedding_batch_size: int = 128
+    openai_api_key: str | None = field(default=None, repr=False)
     log_level: str = "INFO"
 
     @classmethod
@@ -45,6 +51,30 @@ class Settings:
                 "AMA_CHUNK_OVERLAP_CHARACTERS must be smaller than "
                 "AMA_CHUNK_SIZE_CHARACTERS"
             )
+        embedding_provider = values.get("AMA_EMBEDDING_PROVIDER", "none").strip().lower()
+        if embedding_provider not in VALID_EMBEDDING_PROVIDERS:
+            allowed = ", ".join(sorted(VALID_EMBEDDING_PROVIDERS))
+            raise ValueError(f"AMA_EMBEDDING_PROVIDER must be one of: {allowed}")
+        embedding_model = values.get(
+            "AMA_EMBEDDING_MODEL", "text-embedding-3-small"
+        ).strip()
+        if not embedding_model:
+            raise ValueError("AMA_EMBEDDING_MODEL must not be empty")
+        embedding_dimensions = _positive_integer(
+            values.get("AMA_EMBEDDING_DIMENSIONS", "512"),
+            "AMA_EMBEDDING_DIMENSIONS",
+        )
+        embedding_batch_size = _positive_integer(
+            values.get("AMA_EMBEDDING_BATCH_SIZE", "128"),
+            "AMA_EMBEDDING_BATCH_SIZE",
+        )
+        if embedding_batch_size > 2048:
+            raise ValueError("AMA_EMBEDDING_BATCH_SIZE must not exceed 2048")
+        openai_api_key = values.get("OPENAI_API_KEY", "").strip() or None
+        if embedding_provider == "openai" and openai_api_key is None:
+            raise ValueError(
+                "OPENAI_API_KEY is required when AMA_EMBEDDING_PROVIDER is openai"
+            )
         log_level = values.get("AMA_LOG_LEVEL", "INFO").strip().upper()
         if log_level not in VALID_LOG_LEVELS:
             allowed = ", ".join(sorted(VALID_LOG_LEVELS))
@@ -56,6 +86,11 @@ class Settings:
             supported_file_types=file_types,
             chunk_size_characters=chunk_size,
             chunk_overlap_characters=chunk_overlap,
+            embedding_provider=embedding_provider,
+            embedding_model=embedding_model,
+            embedding_dimensions=embedding_dimensions,
+            embedding_batch_size=embedding_batch_size,
+            openai_api_key=openai_api_key,
             log_level=log_level,
         )
 

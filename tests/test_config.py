@@ -13,6 +13,11 @@ def test_settings_use_local_defaults() -> None:
     assert settings.supported_file_types == DEFAULT_FILE_TYPES
     assert settings.chunk_size_characters == 2400
     assert settings.chunk_overlap_characters == 400
+    assert settings.embedding_provider == "none"
+    assert settings.embedding_model == "text-embedding-3-small"
+    assert settings.embedding_dimensions == 512
+    assert settings.embedding_batch_size == 128
+    assert settings.openai_api_key is None
     assert settings.log_level == "INFO"
 
 
@@ -24,6 +29,11 @@ def test_settings_read_environment_values() -> None:
             "AMA_SUPPORTED_FILE_TYPES": "PDF, .txt, pdf",
             "AMA_CHUNK_SIZE_CHARACTERS": "1200",
             "AMA_CHUNK_OVERLAP_CHARACTERS": "200",
+            "AMA_EMBEDDING_PROVIDER": "openai",
+            "AMA_EMBEDDING_MODEL": "text-embedding-3-large",
+            "AMA_EMBEDDING_DIMENSIONS": "1024",
+            "AMA_EMBEDDING_BATCH_SIZE": "64",
+            "OPENAI_API_KEY": "test-key",
             "AMA_LOG_LEVEL": "debug",
         }
     )
@@ -33,6 +43,11 @@ def test_settings_read_environment_values() -> None:
     assert settings.supported_file_types == (".pdf", ".txt")
     assert settings.chunk_size_characters == 1200
     assert settings.chunk_overlap_characters == 200
+    assert settings.embedding_provider == "openai"
+    assert settings.embedding_model == "text-embedding-3-large"
+    assert settings.embedding_dimensions == 1024
+    assert settings.embedding_batch_size == 64
+    assert settings.openai_api_key == "test-key"
     assert settings.log_level == "DEBUG"
 
 
@@ -60,4 +75,21 @@ def test_settings_reject_unknown_log_level() -> None:
 )
 def test_settings_reject_invalid_chunk_limits(environment: dict[str, str]) -> None:
     with pytest.raises(ValueError, match="AMA_CHUNK"):
+        Settings.from_environment(environment)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"AMA_EMBEDDING_PROVIDER": "unknown"},
+        {"AMA_EMBEDDING_PROVIDER": "openai"},
+        {"AMA_EMBEDDING_DIMENSIONS": "0"},
+        {"AMA_EMBEDDING_BATCH_SIZE": "2049"},
+        {"AMA_EMBEDDING_MODEL": " "},
+    ],
+)
+def test_settings_reject_invalid_embedding_configuration(
+    environment: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError):
         Settings.from_environment(environment)

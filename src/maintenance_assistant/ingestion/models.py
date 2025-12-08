@@ -102,6 +102,16 @@ class PreparedChunk:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedEmbedding:
+    """A vector associated with a prepared chunk sequence."""
+
+    sequence: int
+    model: str
+    dimensions: int
+    vector: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class StoredDocument:
     """A document record committed to local storage."""
 
@@ -132,8 +142,32 @@ class StoredChunk:
 
 
 @dataclass(frozen=True, slots=True)
+class StoredEmbedding:
+    """A vector persisted for a stored chunk."""
+
+    chunk_id: str
+    model: str
+    dimensions: int
+    vector: tuple[float, ...]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class VectorSearchResult:
+    """A stored chunk ranked against an embedded query."""
+
+    score: float
+    model: str
+    chunk: StoredChunk
+    document: StoredDocument
+
+
+@dataclass(frozen=True, slots=True)
 class IngestionResult:
     """The successful outcome of an end-to-end ingestion request."""
 
     status: IngestionStatus
     document: StoredDocument
+    embedded_chunk_count: int = 0
+    embedding_model: str | None = None
+    embedding_input_tokens: int = 0

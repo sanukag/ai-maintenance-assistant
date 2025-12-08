@@ -1,5 +1,6 @@
 from hashlib import sha256
 from pathlib import Path
+import sqlite3
 from unittest.mock import patch
 
 import pytest
@@ -14,9 +15,11 @@ from maintenance_assistant.ingestion import (
     IngestionErrorCode,
     LocalDocumentStore,
     PreparedChunk,
+    PreparedEmbedding,
     SourceLocation,
     ValidatedDocument,
 )
+from maintenance_assistant.ingestion.storage import _SCHEMA_VERSION_1
 
 
 def _document(path: Path) -> ExtractedDocument:
@@ -34,12 +37,25 @@ def _document(path: Path) -> ExtractedDocument:
     )
 
 
-def _chunk(sequence: int = 0) -> PreparedChunk:
+def _chunk(sequence: int = 0, text: str = "Check pressure.") -> PreparedChunk:
     return PreparedChunk(
         sequence=sequence,
-        text="Check pressure.",
-        character_count=15,
+        text=text,
+        character_count=len(text),
         location=ChunkLocation(headings=("Checks",), line_start=1, line_end=1),
+    )
+
+
+def _embedding(
+    sequence: int,
+    vector: tuple[float, ...],
+    model: str = "test-embedding",
+) -> PreparedEmbedding:
+    return PreparedEmbedding(
+        sequence=sequence,
+        model=model,
+        dimensions=len(vector),
+        vector=vector,
     )
 
 
@@ -117,3 +133,168 @@ def test_store_rejects_source_that_changes_after_validation(tmp_path: Path) -> N
 
     assert captured.value.code is IngestionErrorCode.INVALID_DOCUMENT
     assert list(store.documents_directory.iterdir()) == []
+
+
+def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
+    data_directory = tmp_path / "data"
+    data_directory.mkdir()
+    database_path = data_directory / "maintenance-assistant.db"
+    connection = sqlite3.connect(database_path)
+    try:
+        connection.executescript(_SCHEMA_VERSION_1)
+        connection.execute(
+            """
+            INSERT INTO documents (
+                id, content_hash, original_filename, stored_path,
+                document_format, size_bytes, title, page_count, chunk_count,
+                extractor_name, extractor_version, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "existing-document",
+                "existing-hash",
+                "manual.txt",
+                "documents/existing-document/original.txt",
+                "text",
+                20,
+                "Existing manual",
+                None,
+                1,
+                "built-in",
+                "1",
+                "2026-07-13T00:00:00+00:00",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO chunks (
+                id, document_id, sequence, text, character_count,
+                page_start, page_end, headings, line_start, line_end
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "existing-chunk",
+                "existing-document",
+                0,
+                "Existing procedure",
+                18,
+                None,
+                None,
+                "[]",
+                1,
+                1,
+            ),
+        )
+        connection.execute("PRAGMA user_version = 1")
+        connection.commit()
+    finally:
+        connection.close()
+
+    LocalDocumentStore(data_directory).initialise()
+
+    connection = sqlite3.connect(database_path)
+    try:
+        version = connection.execute("PRAGMA user_version").fetchone()[0]
+        embedding_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'embeddings'"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert version == 2
+    assert embedding_table == ("embeddings",)
+    store = LocalDocumentStore(data_directory)
+    assert store.get_document("existing-document").title == "Existing manual"
+    assert store.list_chunks("existing-document")[0].text == "Existing procedure"
+
+
+def test_store_saves_vectors_with_new_document(tmp_path: Path) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Check pressure.", encoding="utf-8")
+    store = LocalDocumentStore(tmp_path / "data")
+
+    stored = store.save(
+        _document(source),
+        [_chunk()],
+        [_embedding(0, (0.25, 0.75))],
+    )
+
+    embeddings = store.list_embeddings(stored.id)
+    assert len(embeddings) == 1
+    assert embeddings[0].model == "test-embedding"
+    assert embeddings[0].dimensions == 2
+    assert embeddings[0].vector == pytest.approx((0.25, 0.75))
+    assert store.missing_embedding_chunks(
+        stored.id, model="test-embedding", dimensions=2
+    ) == ()
+
+
+def test_store_backfills_missing_chunk_vectors(tmp_path: Path) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Pump and valve procedures.", encoding="utf-8")
+    store = LocalDocumentStore(tmp_path / "data")
+    stored = store.save(
+        _document(source),
+        [_chunk(0, "Pump procedure"), _chunk(1, "Valve procedure")],
+    )
+
+    missing = store.missing_embedding_chunks(
+        stored.id, model="test-embedding", dimensions=2
+    )
+    assert [chunk.sequence for chunk in missing] == [0, 1]
+
+    store.save_embeddings(
+        stored.id,
+        [_embedding(0, (1.0, 0.0)), _embedding(1, (0.0, 1.0))],
+    )
+
+    assert store.missing_embedding_chunks(
+        stored.id, model="test-embedding", dimensions=2
+    ) == ()
+
+
+def test_store_ranks_vectors_by_cosine_similarity(tmp_path: Path) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Pump valve motor.", encoding="utf-8")
+    store = LocalDocumentStore(tmp_path / "data")
+    stored = store.save(
+        _document(source),
+        [
+            _chunk(0, "Pump procedure"),
+            _chunk(1, "Mixed procedure"),
+            _chunk(2, "Valve procedure"),
+        ],
+        [
+            _embedding(0, (1.0, 0.0)),
+            _embedding(1, (0.8, 0.2)),
+            _embedding(2, (0.0, 1.0)),
+        ],
+    )
+
+    results = store.search_vectors(
+        (1.0, 0.0), model="test-embedding", limit=2
+    )
+
+    assert [result.chunk.text for result in results] == [
+        "Pump procedure",
+        "Mixed procedure",
+    ]
+    assert results[0].score == pytest.approx(1.0)
+    assert results[0].document.id == stored.id
+
+
+@pytest.mark.parametrize("vector", [(), (0.0, 0.0), (float("nan"), 1.0)])
+def test_store_rejects_invalid_vectors(
+    tmp_path: Path,
+    vector: tuple[float, ...],
+) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Check pressure.", encoding="utf-8")
+
+    with pytest.raises(IngestionError) as captured:
+        LocalDocumentStore(tmp_path / "data").save(
+            _document(source),
+            [_chunk()],
+            [_embedding(0, vector)],
+        )
+
+    assert captured.value.code is IngestionErrorCode.STORAGE_FAILED

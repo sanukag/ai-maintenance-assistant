@@ -18,6 +18,7 @@ class IngestionErrorCode(StrEnum):
     NO_EXTRACTABLE_TEXT = "no_extractable_text"
     EXTRACTION_FAILED = "extraction_failed"
     DUPLICATE_DOCUMENT = "duplicate_document"
+    EMBEDDING_FAILED = "embedding_failed"
     STORAGE_FAILED = "storage_failed"
 
 
