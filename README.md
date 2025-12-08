@@ -47,5 +47,31 @@ The command reports a stable error code and a concise explanation when a
 document cannot be ingested. Scanned PDFs requiring optical character
 recognition and password-protected PDFs are not supported yet.
 
+### Enable embeddings and semantic search
+
+Embeddings are disabled by default. To embed new or previously ingested
+documents with OpenAI:
+
+```bash
+export AMA_EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=your-project-api-key
+ama-ingest /path/to/maintenance-manual.pdf
+```
+
+When enabled, document chunk text is sent to the OpenAI Embeddings API. Original
+files, metadata and returned vectors remain in the local data directory.
+
+Search the embedded chunks with:
+
+```bash
+ama-search "How do I isolate the pump before maintenance?"
+```
+
+The initial provider uses `text-embedding-3-small` with 512 dimensions. Both
+values are configurable. Search must use the same provider configuration used
+to create the stored vectors.
+
 See [`docs/document-ingestion.md`](docs/document-ingestion.md) for pipeline,
-storage and limitation details.
+storage and limitation details. See
+[`docs/embeddings-and-vector-search.md`](docs/embeddings-and-vector-search.md)
+for the embedding and retrieval design.
