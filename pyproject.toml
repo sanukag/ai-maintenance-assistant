@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 ama-ingest = "maintenance_assistant.cli:main"
+ama-search = "maintenance_assistant.cli:search_main"
 
 [project.optional-dependencies]
 test = [

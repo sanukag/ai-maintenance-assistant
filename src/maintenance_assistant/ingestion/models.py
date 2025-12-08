@@ -168,3 +168,6 @@ class IngestionResult:
 
     status: IngestionStatus
     document: StoredDocument
+    embedded_chunk_count: int = 0
+    embedding_model: str | None = None
+    embedding_input_tokens: int = 0

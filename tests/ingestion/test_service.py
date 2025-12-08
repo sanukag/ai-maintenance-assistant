@@ -1,12 +1,19 @@
+from hashlib import sha256
 from pathlib import Path
 
+import pytest
+
 from maintenance_assistant.config import Settings
+from maintenance_assistant.embeddings import EmbeddingBatch
 from maintenance_assistant.ingestion import (
+    IngestionError,
+    IngestionErrorCode,
     IngestionService,
     IngestionStatus,
     LocalDocumentStore,
 )
 from tests.ingestion.pdf_factory import write_text_pdf
+from tests.fakes import KeywordEmbeddingProvider
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -64,3 +71,97 @@ def test_service_ingests_real_pdf_with_page_traceability(tmp_path: Path) -> None
     assert chunks[0].text == "Isolate the pump before maintenance."
     assert chunks[0].location.page_start == 1
     assert chunks[0].location.page_end == 1
+
+
+def test_service_embeds_chunks_during_ingestion(tmp_path: Path) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text("Pump checks.\n\nValve checks.", encoding="utf-8")
+    settings = Settings(
+        data_directory=tmp_path / "data",
+        chunk_size_characters=15,
+        chunk_overlap_characters=0,
+    )
+    provider = KeywordEmbeddingProvider()
+
+    result = IngestionService(
+        settings,
+        embedding_provider=provider,
+    ).ingest(path)
+
+    assert result.status is IngestionStatus.COMPLETED
+    assert result.embedded_chunk_count == 2
+    assert result.embedding_model == "test-embedding"
+    assert result.embedding_input_tokens == 4
+    stored = LocalDocumentStore(settings.data_directory)
+    embeddings = stored.list_embeddings(
+        result.document.id,
+        model="test-embedding",
+        dimensions=3,
+    )
+    assert [embedding.vector for embedding in embeddings] == [
+        (1.0, 0.0, 0.0),
+        (0.0, 1.0, 0.0),
+    ]
+
+
+def test_service_backfills_embeddings_for_existing_document(tmp_path: Path) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text("Pump checks.", encoding="utf-8")
+    settings = _settings(tmp_path)
+    first = IngestionService(settings).ingest(path)
+    provider = KeywordEmbeddingProvider()
+
+    second = IngestionService(
+        settings,
+        embedding_provider=provider,
+    ).ingest(path)
+
+    assert second.status is IngestionStatus.ALREADY_EXISTS
+    assert second.document.id == first.document.id
+    assert second.embedded_chunk_count == 1
+    assert second.embedding_input_tokens == 2
+    assert len(provider.calls) == 1
+
+
+def test_service_reuses_existing_embeddings_without_api_call(tmp_path: Path) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text("Pump checks.", encoding="utf-8")
+    settings = _settings(tmp_path)
+    first_provider = KeywordEmbeddingProvider()
+    first = IngestionService(
+        settings,
+        embedding_provider=first_provider,
+    ).ingest(path)
+    second_provider = KeywordEmbeddingProvider()
+
+    second = IngestionService(
+        settings,
+        embedding_provider=second_provider,
+    ).ingest(path)
+
+    assert second.document.id == first.document.id
+    assert second.embedded_chunk_count == 1
+    assert second.embedding_input_tokens == 0
+    assert second_provider.calls == []
+
+
+def test_service_does_not_store_document_for_invalid_embedding_batch(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text("Pump checks.", encoding="utf-8")
+    settings = _settings(tmp_path)
+    provider = KeywordEmbeddingProvider()
+    provider.embed = lambda texts: EmbeddingBatch(
+        model=provider.model,
+        dimensions=provider.dimensions,
+        vectors=(),
+        input_tokens=0,
+    )
+
+    with pytest.raises(IngestionError) as captured:
+        IngestionService(settings, embedding_provider=provider).ingest(path)
+
+    assert captured.value.code is IngestionErrorCode.EMBEDDING_FAILED
+    content_hash = sha256(path.read_bytes()).hexdigest()
+    assert LocalDocumentStore(settings.data_directory).find_by_hash(content_hash) is None

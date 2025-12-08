@@ -347,6 +347,7 @@ class LocalDocumentStore:
         document_id: str,
         *,
         model: str | None = None,
+        dimensions: int | None = None,
     ) -> tuple[StoredEmbedding, ...]:
         """Return vectors stored for one document."""
 
@@ -361,6 +362,9 @@ class LocalDocumentStore:
         if model is not None:
             query += " AND embeddings.model = ?"
             parameters.append(model)
+        if dimensions is not None:
+            query += " AND embeddings.dimensions = ?"
+            parameters.append(dimensions)
         query += " ORDER BY chunks.sequence"
         with self._connection() as connection:
             rows = connection.execute(query, parameters).fetchall()
