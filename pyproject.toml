@@ -30,6 +30,9 @@ test = [
 
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
+markers = [
+    "container: requires a running local Docker daemon",
+]
 testpaths = ["tests"]
 
 [tool.coverage.run]

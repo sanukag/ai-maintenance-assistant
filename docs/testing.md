@@ -35,3 +35,18 @@ fixtures as well as one end-to-end ingestion case.
 Automated tests inject deterministic vectors and never require an OpenAI API
 key. A live-provider smoke test should be run deliberately with a project key
 before release because it sends content externally and incurs API usage.
+
+## Container verification
+
+When the Docker CLI is installed, the normal suite validates the resolved
+Compose model without starting a container. Run the complete Docker integration
+test deliberately with:
+
+```bash
+AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
+```
+
+It builds the image, waits for the API health check, confirms the process uses
+the non-root UID, uploads a real text document, restarts the container and
+checks that the named volume preserved the document. The isolated test Compose
+project, image and volume are removed in cleanup.

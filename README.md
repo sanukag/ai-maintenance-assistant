@@ -93,6 +93,28 @@ local-only embedding configuration. Semantic search requires embeddings to be
 enabled before the API starts. The initial API has no authentication and is
 intended for local development only; do not expose it to an untrusted network.
 
+## Run with Docker
+
+Build the image and start the API with Docker Compose:
+
+```bash
+docker compose up --build --wait
+```
+
+The API is available at `http://127.0.0.1:8000`, including its interactive
+documentation at `/docs`. Compose keeps documents, SQLite metadata and vectors
+in a named volume when the container is recreated.
+
+Use a local `.env` file to change `AMA_API_PORT` or enable embeddings. Stop the
+service without deleting its stored data with:
+
+```bash
+docker compose down
+```
+
+See [`docs/containerisation.md`](docs/containerisation.md) before deleting the
+volume or enabling an external embedding provider.
+
 See [`docs/document-ingestion.md`](docs/document-ingestion.md) for pipeline,
 storage and limitation details. See
 [`docs/embeddings-and-vector-search.md`](docs/embeddings-and-vector-search.md)
