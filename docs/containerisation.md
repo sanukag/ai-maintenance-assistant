@@ -43,12 +43,22 @@ AMA_API_PORT=8080
 
 The service would then be available at `http://127.0.0.1:8080`.
 
-Embeddings remain disabled by default. To enable the OpenAI provider, set these
-values only in the untracked `.env` file:
+Embeddings and grounded answers remain disabled by default. To enable both
+OpenAI providers, set these values only in the untracked `.env` file:
 
 ```env
 AMA_EMBEDDING_PROVIDER=openai
+AMA_ANSWER_PROVIDER=openai
 OPENAI_API_KEY=your-project-api-key
+```
+
+`AMA_ANSWER_MODEL` defaults to `gpt-5.6-terra`, and
+`AMA_ANSWER_MAX_OUTPUT_TOKENS` defaults to `1000`. The same runtime key is used
+for embeddings and answers. Restart or recreate the service after changing
+provider settings:
+
+```bash
+docker compose up --build --detach --wait
 ```
 
 Do not add a real key to `.env.example`, the Dockerfile or the image. Compose
@@ -65,6 +75,9 @@ The `maintenance-data` named volume contains:
 - the SQLite database;
 - managed copies of ingested documents;
 - extracted chunks and stored vectors.
+
+Answers are generated per request and are not persisted in this initial
+version.
 
 Rebuilding the image, restarting the service or running the following command
 does not delete the volume:

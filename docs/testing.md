@@ -15,6 +15,9 @@ The project tests ingestion at three levels:
 - API integration tests exercise health reporting, bounded multipart uploads,
   duplicate handling, document browsing, structured errors, OpenAPI generation
   and semantic search through the real local services.
+- Grounded-answer tests exercise evidence retrieval, source labelling, typed
+  Responses API calls, insufficient-evidence handling and rejection of missing,
+  duplicated, mismatched or invented citations.
 
 Run the complete suite with:
 
@@ -33,8 +36,10 @@ Tests use isolated temporary directories and must not read or write the normal
 fixtures as well as one end-to-end ingestion case.
 
 Automated tests inject deterministic vectors and never require an OpenAI API
-key. A live-provider smoke test should be run deliberately with a project key
-before release because it sends content externally and incurs API usage.
+key. They also inject deterministic answer payloads, so CI never sends questions
+or chunks to an external model. A live-provider smoke test should be run
+deliberately with a project key before release because it sends content
+externally and incurs API usage.
 
 ## Container verification
 
