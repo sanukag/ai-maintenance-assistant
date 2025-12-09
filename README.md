@@ -1,5 +1,7 @@
 # AI Maintenance Assistant
 
+[![CI](https://github.com/sanukag/ai-maintenance-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/sanukag/ai-maintenance-assistant/actions/workflows/ci.yml)
+
 A local-first assistant for turning maintenance documents into useful,
 traceable knowledge.
 
