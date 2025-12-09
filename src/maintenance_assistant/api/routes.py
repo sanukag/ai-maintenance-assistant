@@ -10,6 +10,8 @@ from fastapi.concurrency import run_in_threadpool
 
 from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.schemas import (
+    AnswerRequest,
+    AnswerResponse,
     DocumentListResponse,
     DocumentResponse,
     HealthResponse,
@@ -31,11 +33,14 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
 
     services.store.initialise()
     provider = services.embedding_provider
+    answer_provider = services.answer_provider
     return HealthResponse(
         status="ok",
         storage="ok",
         embeddings="enabled" if provider is not None else "disabled",
         embedding_model=provider.model if provider is not None else None,
+        answers="enabled" if services.answers is not None else "disabled",
+        answer_model=answer_provider.model if answer_provider is not None else None,
     )
 
 
@@ -121,6 +126,27 @@ def search_documents(
     return SearchResponse(
         results=[SearchResultResponse.from_result(result) for result in results]
     )
+
+
+@router.post("/answers", response_model=AnswerResponse, tags=["answers"])
+def answer_question(
+    request: AnswerRequest,
+    services: ApiServices = Depends(get_services),
+) -> AnswerResponse:
+    """Answer a question using retrieved local evidence and verified citations."""
+
+    if services.answers is None:
+        raise ApiError(
+            503,
+            "answers_disabled",
+            "Grounded answers require enabled embedding and answer providers",
+        )
+    answer = services.answers.answer(
+        request.question,
+        max_sources=request.max_sources,
+        document_id=request.document_id,
+    )
+    return AnswerResponse.from_answer(answer)
 
 
 def _safe_filename(uploaded_name: str | None) -> str:

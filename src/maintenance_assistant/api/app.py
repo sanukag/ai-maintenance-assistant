@@ -7,6 +7,11 @@ from typing import cast
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from maintenance_assistant.answering import (
+    AnswerProvider,
+    AnsweringError,
+    create_answer_provider,
+)
 from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.routes import router
 from maintenance_assistant.api.schemas import ErrorDetail, ErrorResponse
@@ -19,33 +24,42 @@ from maintenance_assistant.ingestion import (
     LocalDocumentStore,
 )
 
-_CONFIGURED_PROVIDER = object()
+_CONFIGURED_EMBEDDING_PROVIDER = object()
+_CONFIGURED_ANSWER_PROVIDER = object()
 
 
 def create_app(
     *,
     settings: Settings | None = None,
-    embedding_provider: EmbeddingProvider | None | object = _CONFIGURED_PROVIDER,
+    embedding_provider: EmbeddingProvider | None | object = _CONFIGURED_EMBEDDING_PROVIDER,
+    answer_provider: AnswerProvider | None | object = _CONFIGURED_ANSWER_PROVIDER,
     store: LocalDocumentStore | None = None,
 ) -> FastAPI:
     """Create an API with production defaults or explicitly injected services."""
 
     configured_settings = settings or Settings.from_environment()
-    provider = (
+    configured_embedding_provider = (
         create_embedding_provider(configured_settings)
-        if embedding_provider is _CONFIGURED_PROVIDER
+        if embedding_provider is _CONFIGURED_EMBEDDING_PROVIDER
         else cast(EmbeddingProvider | None, embedding_provider)
+    )
+    configured_answer_provider = (
+        create_answer_provider(configured_settings)
+        if answer_provider is _CONFIGURED_ANSWER_PROVIDER
+        else cast(AnswerProvider | None, answer_provider)
     )
     application = FastAPI(
         title="AI Maintenance Assistant API",
         version="0.1.0",
         description=(
-            "Ingest maintenance documents and search their traceable local chunks."
+            "Ingest maintenance documents, search their traceable chunks and "
+            "generate grounded answers with verified citations."
         ),
     )
     application.state.services = build_services(
         configured_settings,
-        provider,
+        configured_embedding_provider,
+        configured_answer_provider,
         store,
     )
     application.include_router(router)
@@ -61,6 +75,10 @@ def create_app(
             error.code.value,
             error.message,
         )
+
+    @application.exception_handler(AnsweringError)
+    async def handle_answering_error(_: Request, error: AnsweringError) -> JSONResponse:
+        return _error_response(502, error.code.value, error.message)
 
     return application
 
