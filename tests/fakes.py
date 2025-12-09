@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 
+from maintenance_assistant.answering import GeneratedAnswer, GroundingSource
 from maintenance_assistant.embeddings import EmbeddingBatch
 
 
@@ -33,3 +34,37 @@ class KeywordEmbeddingProvider:
         if pump == valve == motor == 0.0:
             return (0.1, 0.1, 0.1)
         return (pump, valve, motor)
+
+
+class FixedAnswerProvider:
+    """Return one configurable grounded-answer payload for integration tests."""
+
+    model = "test-answer"
+
+    def __init__(
+        self,
+        *,
+        answerable: bool = True,
+        answer: str = "Isolate the pump before maintenance [S1].",
+        citation_ids: tuple[str, ...] = ("S1",),
+    ) -> None:
+        self.answerable = answerable
+        self.answer_text = answer
+        self.citation_ids = citation_ids
+        self.calls: list[tuple[str, tuple[GroundingSource, ...]]] = []
+
+    def generate(
+        self,
+        question: str,
+        sources: Sequence[GroundingSource],
+    ) -> GeneratedAnswer:
+        prepared_sources = tuple(sources)
+        self.calls.append((question, prepared_sources))
+        return GeneratedAnswer(
+            answerable=self.answerable,
+            answer=self.answer_text,
+            citation_ids=self.citation_ids,
+            model=self.model,
+            input_tokens=24,
+            output_tokens=8,
+        )
