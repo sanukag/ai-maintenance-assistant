@@ -248,6 +248,7 @@ def test_answer_endpoint_returns_verified_traceable_citations(tmp_path: Path) ->
     assert citation["document"]["id"] == uploaded.json()["document"]["id"]
     assert citation["chunk_sequence"] == 0
     assert citation["chunk_id"]
+    assert citation["excerpt"] == "Pump isolation procedure."
     assert "stored_path" not in citation["document"]
     assert answers.calls[0][0] == "How do I maintain the pump?"
 

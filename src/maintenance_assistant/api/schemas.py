@@ -219,6 +219,7 @@ class AnswerCitationResponse(BaseModel):
     document: DocumentResponse
     chunk_id: str
     chunk_sequence: int
+    excerpt: str
     page_start: int | None
     page_end: int | None
     headings: list[str]
@@ -236,6 +237,7 @@ class AnswerCitationResponse(BaseModel):
             document=DocumentResponse.from_document(citation.document),
             chunk_id=citation.chunk.id,
             chunk_sequence=citation.chunk.sequence,
+            excerpt=citation.chunk.text,
             page_start=location.page_start,
             page_end=location.page_end,
             headings=list(location.headings),
