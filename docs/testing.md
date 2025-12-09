@@ -50,3 +50,25 @@ It builds the image, waits for the API health check, confirms the process uses
 the non-root UID, uploads a real text document, restarts the container and
 checks that the named volume preserved the document. The isolated test Compose
 project, image and volume are removed in cleanup.
+
+## Continuous integration
+
+GitHub Actions runs two independent jobs for pull requests targeting `main`
+and for changes merged into `main`:
+
+- `Python tests` installs Python 3.12, validates the Compose model, runs the
+  complete normal suite and rejects coverage below 90%;
+- `Container runtime` builds the real image and verifies health, non-root
+  execution, upload handling, restart behaviour and volume persistence.
+
+The workflow uses read-only repository permissions, immutable action commit
+references and concurrency cancellation. It does not receive an OpenAI API key;
+provider tests use deterministic local doubles.
+
+The local equivalents are:
+
+```bash
+docker compose config --quiet
+pytest --cov=maintenance_assistant --cov-branch --cov-fail-under=90 -q
+AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
+```
