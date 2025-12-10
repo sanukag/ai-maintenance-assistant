@@ -38,6 +38,12 @@ Each stored chunk should retain enough source metadata to identify its original
 document and location. A failed stage should return a clear error without
 leaving a partially ingested document behind.
 
+Each manual has a lifecycle state. A replacement is stored as a new immutable
+revision and supersedes the previous current revision in the same transaction.
+Retrieval joins the document record and accepts vectors from `current` manuals
+only; superseded and archived revisions remain inspectable but cannot silently
+contribute evidence.
+
 ## Grounded-answer flow
 
 ```text
@@ -77,6 +83,8 @@ a stable local refusal with no citations.
 - Parsing, chunking and persistence remain separate components so they can be
   tested and replaced independently.
 - Exact duplicates are detected with a SHA-256 content fingerprint.
+- Revision replacement, archiving and permanent deletion are enforced by the
+  storage boundary rather than relying on interface filtering.
 - Scanned-PDF optical character recognition and additional formats are
   deliberately outside the initial version.
 

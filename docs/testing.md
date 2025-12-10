@@ -19,8 +19,10 @@ The project tests ingestion at three levels:
   Responses API calls, insufficient-evidence handling and rejection of missing,
   duplicated, mismatched or invented citations.
 - Frontend component tests exercise the worker question flow, verified source
-  presentation, manual upload, library status and the developer settings page
-  with deterministic API responses.
+  presentation, manual upload, lifecycle confirmations, revision installation,
+  library status and the developer settings page with deterministic responses.
+- Lifecycle tests verify the schema migration, atomic superseding, active-only
+  retrieval, archive exclusion, cascading deletion and retained history.
 
 Run the complete suite with:
 
@@ -64,10 +66,10 @@ AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
 ```
 
 It builds both images, waits for the API and web health checks, confirms both
-processes use the non-root UID, verifies the internal API proxy, uploads a real
-text document, restarts the API and checks that the named volume preserved the
-document. The isolated test Compose project, images and volume are removed in
-cleanup.
+processes use the non-root UID, verifies the internal API proxy, installs a real
+replacement revision, restarts the API, checks volume persistence and exercises
+archive and deletion through the web proxy. The isolated test Compose project,
+images and volume are removed in cleanup.
 
 ## Continuous integration
 

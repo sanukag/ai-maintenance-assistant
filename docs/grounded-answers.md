@@ -19,6 +19,10 @@ For each `POST /answers` request, the application:
 7. maps valid citations back to document metadata, the exact evidence excerpt
    and available page, heading or line locations.
 
+Vector search always filters the joined document record to `current`. A
+superseded or archived manual therefore cannot be selected even when its exact
+document identifier is supplied.
+
 The OpenAI implementation uses the Responses API with a Pydantic structured
 output schema. The default answer model is `gpt-5.6-terra`, selected as the
 current balance between intelligence and cost. The model is configurable so a
