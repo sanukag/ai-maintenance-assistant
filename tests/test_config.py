@@ -17,6 +17,9 @@ def test_settings_use_local_defaults() -> None:
     assert settings.embedding_model == "text-embedding-3-small"
     assert settings.embedding_dimensions == 512
     assert settings.embedding_batch_size == 128
+    assert settings.answer_provider == "none"
+    assert settings.answer_model == "gpt-5.6-terra"
+    assert settings.answer_max_output_tokens == 1000
     assert settings.openai_api_key is None
     assert settings.log_level == "INFO"
 
@@ -33,6 +36,9 @@ def test_settings_read_environment_values() -> None:
             "AMA_EMBEDDING_MODEL": "text-embedding-3-large",
             "AMA_EMBEDDING_DIMENSIONS": "1024",
             "AMA_EMBEDDING_BATCH_SIZE": "64",
+            "AMA_ANSWER_PROVIDER": "openai",
+            "AMA_ANSWER_MODEL": "gpt-answer",
+            "AMA_ANSWER_MAX_OUTPUT_TOKENS": "750",
             "OPENAI_API_KEY": "test-key",
             "AMA_LOG_LEVEL": "debug",
         }
@@ -47,6 +53,9 @@ def test_settings_read_environment_values() -> None:
     assert settings.embedding_model == "text-embedding-3-large"
     assert settings.embedding_dimensions == 1024
     assert settings.embedding_batch_size == 64
+    assert settings.answer_provider == "openai"
+    assert settings.answer_model == "gpt-answer"
+    assert settings.answer_max_output_tokens == 750
     assert settings.openai_api_key == "test-key"
     assert settings.log_level == "DEBUG"
 
@@ -89,6 +98,22 @@ def test_settings_reject_invalid_chunk_limits(environment: dict[str, str]) -> No
     ],
 )
 def test_settings_reject_invalid_embedding_configuration(
+    environment: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError):
+        Settings.from_environment(environment)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"AMA_ANSWER_PROVIDER": "unknown"},
+        {"AMA_ANSWER_PROVIDER": "openai"},
+        {"AMA_ANSWER_MODEL": " "},
+        {"AMA_ANSWER_MAX_OUTPUT_TOKENS": "0"},
+    ],
+)
+def test_settings_reject_invalid_answer_configuration(
     environment: dict[str, str],
 ) -> None:
     with pytest.raises(ValueError):

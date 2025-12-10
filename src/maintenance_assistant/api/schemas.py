@@ -6,6 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from maintenance_assistant.answering import AnswerCitation, GroundedAnswer
 from maintenance_assistant.ingestion import (
     IngestionResult,
     StoredChunk,
@@ -34,6 +35,8 @@ class HealthResponse(BaseModel):
     storage: str
     embeddings: str
     embedding_model: str | None
+    answers: str
+    answer_model: str | None
 
 
 class DocumentResponse(BaseModel):
@@ -188,3 +191,93 @@ class SearchResponse(BaseModel):
     """Ranked local semantic-search results."""
 
     results: list[SearchResultResponse]
+
+
+class AnswerRequest(BaseModel):
+    """A question, evidence limit and optional document filter."""
+
+    question: str = Field(min_length=1, max_length=2_000)
+    max_sources: int = Field(default=5, ge=1, le=10)
+    document_id: str | None = Field(default=None, min_length=1)
+
+    @field_validator("question")
+    @classmethod
+    def question_must_contain_text(cls, value: str) -> str:
+        """Reject whitespace-only questions and remove accidental padding."""
+
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("question must contain text")
+        return stripped
+
+
+class AnswerCitationResponse(BaseModel):
+    """A citation to one exact stored chunk and its source location."""
+
+    source_id: str
+    score: float
+    document: DocumentResponse
+    chunk_id: str
+    chunk_sequence: int
+    excerpt: str
+    page_start: int | None
+    page_end: int | None
+    headings: list[str]
+    line_start: int | None
+    line_end: int | None
+
+    @classmethod
+    def from_citation(cls, citation: AnswerCitation) -> AnswerCitationResponse:
+        """Build a public citation without leaking local storage details."""
+
+        location = citation.chunk.location
+        return cls(
+            source_id=citation.source_id,
+            score=citation.score,
+            document=DocumentResponse.from_document(citation.document),
+            chunk_id=citation.chunk.id,
+            chunk_sequence=citation.chunk.sequence,
+            excerpt=citation.chunk.text,
+            page_start=location.page_start,
+            page_end=location.page_end,
+            headings=list(location.headings),
+            line_start=location.line_start,
+            line_end=location.line_end,
+        )
+
+
+class AnswerUsageResponse(BaseModel):
+    """Provider token usage for one answer request."""
+
+    input_tokens: int
+    output_tokens: int
+
+
+class AnswerResponse(BaseModel):
+    """A grounded answer and its validated, traceable citations."""
+
+    question: str
+    answerable: bool
+    answer: str
+    citations: list[AnswerCitationResponse]
+    model: str
+    usage: AnswerUsageResponse
+
+    @classmethod
+    def from_answer(cls, answer: GroundedAnswer) -> AnswerResponse:
+        """Build an HTTP response from a validated grounded answer."""
+
+        return cls(
+            question=answer.question,
+            answerable=answer.answerable,
+            answer=answer.answer,
+            citations=[
+                AnswerCitationResponse.from_citation(citation)
+                for citation in answer.citations
+            ],
+            model=answer.model,
+            usage=AnswerUsageResponse(
+                input_tokens=answer.input_tokens,
+                output_tokens=answer.output_tokens,
+            ),
+        )

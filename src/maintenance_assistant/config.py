@@ -10,6 +10,7 @@ from typing import Mapping
 DEFAULT_FILE_TYPES = (".pdf", ".txt", ".md")
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 VALID_EMBEDDING_PROVIDERS = frozenset({"none", "openai"})
+VALID_ANSWER_PROVIDERS = frozenset({"none", "openai"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +26,9 @@ class Settings:
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 512
     embedding_batch_size: int = 128
+    answer_provider: str = "none"
+    answer_model: str = "gpt-5.6-terra"
+    answer_max_output_tokens: int = 1_000
     openai_api_key: str | None = field(default=None, repr=False)
     log_level: str = "INFO"
 
@@ -70,10 +74,23 @@ class Settings:
         )
         if embedding_batch_size > 2048:
             raise ValueError("AMA_EMBEDDING_BATCH_SIZE must not exceed 2048")
+        answer_provider = values.get("AMA_ANSWER_PROVIDER", "none").strip().lower()
+        if answer_provider not in VALID_ANSWER_PROVIDERS:
+            allowed = ", ".join(sorted(VALID_ANSWER_PROVIDERS))
+            raise ValueError(f"AMA_ANSWER_PROVIDER must be one of: {allowed}")
+        answer_model = values.get("AMA_ANSWER_MODEL", "gpt-5.6-terra").strip()
+        if not answer_model:
+            raise ValueError("AMA_ANSWER_MODEL must not be empty")
+        answer_max_output_tokens = _positive_integer(
+            values.get("AMA_ANSWER_MAX_OUTPUT_TOKENS", "1000"),
+            "AMA_ANSWER_MAX_OUTPUT_TOKENS",
+        )
         openai_api_key = values.get("OPENAI_API_KEY", "").strip() or None
-        if embedding_provider == "openai" and openai_api_key is None:
+        if (
+            embedding_provider == "openai" or answer_provider == "openai"
+        ) and openai_api_key is None:
             raise ValueError(
-                "OPENAI_API_KEY is required when AMA_EMBEDDING_PROVIDER is openai"
+                "OPENAI_API_KEY is required when an OpenAI provider is enabled"
             )
         log_level = values.get("AMA_LOG_LEVEL", "INFO").strip().upper()
         if log_level not in VALID_LOG_LEVELS:
@@ -90,6 +107,9 @@ class Settings:
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,
             embedding_batch_size=embedding_batch_size,
+            answer_provider=answer_provider,
+            answer_model=answer_model,
+            answer_max_output_tokens=answer_max_output_tokens,
             openai_api_key=openai_api_key,
             log_level=log_level,
         )

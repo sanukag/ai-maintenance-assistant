@@ -28,6 +28,8 @@ def test_compose_configuration_is_valid() -> None:
     assert api["cap_drop"] == ["ALL"]
     assert "no-new-privileges:true" in api["security_opt"]
     assert api["environment"]["AMA_DATA_DIRECTORY"] == "/app/data"
+    assert api["environment"]["AMA_ANSWER_PROVIDER"] in {"none", "openai"}
+    assert int(api["environment"]["AMA_ANSWER_MAX_OUTPUT_TOKENS"]) > 0
     assert api["ports"] == [
         {
             "mode": "ingress",
@@ -55,6 +57,7 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
     environment = os.environ | {
         "AMA_API_PORT": str(port),
         "AMA_EMBEDDING_PROVIDER": "none",
+        "AMA_ANSWER_PROVIDER": "none",
     }
     environment.pop("OPENAI_API_KEY", None)
     compose = ("--project-name", project)

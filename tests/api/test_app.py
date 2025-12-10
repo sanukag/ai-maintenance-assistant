@@ -10,7 +10,7 @@ from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.routes import _safe_filename
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion import IngestionErrorCode
-from tests.fakes import KeywordEmbeddingProvider
+from tests.fakes import FixedAnswerProvider, KeywordEmbeddingProvider
 
 
 def _settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -38,6 +38,8 @@ def test_health_reports_local_services(tmp_path: Path) -> None:
         "storage": "ok",
         "embeddings": "disabled",
         "embedding_model": None,
+        "answers": "disabled",
+        "answer_model": None,
     }
     assert (tmp_path / "data" / "maintenance-assistant.db").is_file()
 
@@ -201,7 +203,102 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
         "/documents",
         "/documents/{document_id}",
         "/search",
+        "/answers",
     }
+
+
+def test_answer_endpoint_returns_verified_traceable_citations(tmp_path: Path) -> None:
+    embeddings = KeywordEmbeddingProvider()
+    answers = FixedAnswerProvider()
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=embeddings,
+        answer_provider=answers,
+    )
+
+    with TestClient(application) as client:
+        health = client.get("/health")
+        uploaded = client.post(
+            "/documents",
+            files={
+                "file": (
+                    "pump-manual.txt",
+                    b"Pump isolation procedure.\n\nValve inspection procedure.",
+                    "text/plain",
+                )
+            },
+        )
+        response = client.post(
+            "/answers",
+            json={"question": "  How do I maintain the pump?  ", "max_sources": 1},
+        )
+
+    assert health.json()["answers"] == "enabled"
+    assert health.json()["answer_model"] == "test-answer"
+    assert response.status_code == 200
+    body = response.json()
+    assert body["question"] == "How do I maintain the pump?"
+    assert body["answerable"] is True
+    assert body["answer"] == "Isolate the pump before maintenance [S1]."
+    assert body["model"] == "test-answer"
+    assert body["usage"] == {"input_tokens": 24, "output_tokens": 8}
+    assert len(body["citations"]) == 1
+    citation = body["citations"][0]
+    assert citation["source_id"] == "S1"
+    assert citation["document"]["id"] == uploaded.json()["document"]["id"]
+    assert citation["chunk_sequence"] == 0
+    assert citation["chunk_id"]
+    assert citation["excerpt"] == "Pump isolation procedure."
+    assert "stored_path" not in citation["document"]
+    assert answers.calls[0][0] == "How do I maintain the pump?"
+
+
+def test_answer_endpoint_requires_both_providers(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+        answer_provider=None,
+    )
+
+    with TestClient(application) as client:
+        response = client.post("/answers", json={"question": "How do I isolate it?"})
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "answers_disabled"
+
+
+def test_answer_endpoint_translates_unverifiable_provider_output(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+        answer_provider=FixedAnswerProvider(
+            answer="Unsupported statement [S9].",
+            citation_ids=("S9",),
+        ),
+    )
+
+    with TestClient(application) as client:
+        client.post(
+            "/documents",
+            files={"file": ("manual.txt", b"Pump isolation procedure.", "text/plain")},
+        )
+        response = client.post("/answers", json={"question": "How do I isolate it?"})
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "invalid_answer_response"
+
+
+def test_answer_request_rejects_blank_question(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+        answer_provider=FixedAnswerProvider(),
+    )
+
+    with TestClient(application) as client:
+        response = client.post("/answers", json={"question": "   "})
+
+    assert response.status_code == 422
 
 
 @pytest.mark.parametrize("filename", [None, "", ".", "../.."])
