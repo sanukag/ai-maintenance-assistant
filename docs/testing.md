@@ -18,6 +18,9 @@ The project tests ingestion at three levels:
 - Grounded-answer tests exercise evidence retrieval, source labelling, typed
   Responses API calls, insufficient-evidence handling and rejection of missing,
   duplicated, mismatched or invented citations.
+- Frontend component tests exercise the worker question flow, verified source
+  presentation, manual upload, library status and the developer settings page
+  with deterministic API responses.
 
 Run the complete suite with:
 
@@ -29,6 +32,15 @@ Run it with branch coverage reporting when reviewing a larger change:
 
 ```bash
 pytest --cov=maintenance_assistant --cov-report=term-missing
+```
+
+Run the web checks from `web/`:
+
+```bash
+npm test
+npm run lint
+npm run build
+npm audit --omit=dev
 ```
 
 Tests use isolated temporary directories and must not read or write the normal
@@ -51,20 +63,24 @@ test deliberately with:
 AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
 ```
 
-It builds the image, waits for the API health check, confirms the process uses
-the non-root UID, uploads a real text document, restarts the container and
-checks that the named volume preserved the document. The isolated test Compose
-project, image and volume are removed in cleanup.
+It builds both images, waits for the API and web health checks, confirms both
+processes use the non-root UID, verifies the internal API proxy, uploads a real
+text document, restarts the API and checks that the named volume preserved the
+document. The isolated test Compose project, images and volume are removed in
+cleanup.
 
 ## Continuous integration
 
-GitHub Actions runs two independent jobs for pull requests targeting `main`
+GitHub Actions runs three independent jobs for pull requests targeting `main`
 and for changes merged into `main`:
 
+- `Web checks` installs the locked Node.js dependencies, audits production
+  packages, runs component tests and linting, then produces a Next.js build;
 - `Python tests` installs Python 3.12, validates the Compose model, runs the
   complete normal suite and rejects coverage below 90%;
-- `Container runtime` builds the real image and verifies health, non-root
-  execution, upload handling, restart behaviour and volume persistence.
+- `Container runtime` builds the real API and web images and verifies health,
+  internal proxying, non-root execution, upload handling, restart behaviour and
+  volume persistence.
 
 The workflow uses read-only repository permissions, immutable action commit
 references and concurrency cancellation. It does not receive an OpenAI API key;

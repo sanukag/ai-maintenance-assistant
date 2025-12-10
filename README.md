@@ -5,6 +5,9 @@
 A local-first assistant for turning maintenance documents into useful,
 traceable knowledge.
 
+The application includes a worker-facing Next.js interface for asking grounded
+questions, adding manuals and checking system readiness without developer tools.
+
 ## Development setup
 
 The project requires Python 3.12 or later.
@@ -16,6 +19,17 @@ python -m pip install -e '.[test]'
 pytest
 ```
 
+The web interface requires Node.js 20.9 or later. Run it alongside `ama-api`:
+
+```bash
+cd web
+npm ci
+npm run dev
+```
+
+Open `http://127.0.0.1:3000`. The Next.js server connects to the local API at
+`http://127.0.0.1:8000` by default.
+
 Copy `.env.example` to `.env` when you need to override the local defaults.
 Configuration is read from environment variables; `.env` files are not loaded
 automatically by the package and must be loaded by the chosen runtime.
@@ -24,6 +38,7 @@ automatically by the package and must be loaded by the chosen runtime.
 
 ```text
 src/maintenance_assistant/  Application code
+web/                        Next.js worker interface
 tests/                      Automated tests
 docs/                       Architecture and engineering notes
 data/                       Local runtime data (created when required)
@@ -86,7 +101,8 @@ export OPENAI_API_KEY=your-project-api-key
 ama-api
 ```
 
-Then ask a question through `POST /answers` or the interactive `/docs` page.
+Then ask a question through the web interface, `POST /answers` or the
+interactive `/docs` page.
 Every supported claim uses a marker such as `[S1]`; each returned citation
 contains the matching document, chunk, evidence excerpt and available page,
 heading or line range. The application refuses to return an answer when the
@@ -123,9 +139,10 @@ Build the image and start the API with Docker Compose:
 docker compose up --build --wait
 ```
 
-The API is available at `http://127.0.0.1:8000`, including its interactive
-documentation at `/docs`. Compose keeps documents, SQLite metadata and vectors
-in a named volume when the container is recreated.
+The worker interface is available at `http://127.0.0.1:3000`. The API remains
+available at `http://127.0.0.1:8000`, including its interactive documentation at
+`/docs`. Compose keeps documents, SQLite metadata and vectors in a named volume
+when the containers are recreated.
 
 Use a local `.env` file to change `AMA_API_PORT` or enable embeddings. Stop the
 service without deleting its stored data with:
@@ -143,4 +160,6 @@ storage and limitation details. See
 for the embedding and retrieval design. The HTTP routes and examples are in
 [`docs/application-api.md`](docs/application-api.md). Grounding, citation
 validation and current limitations are described in
-[`docs/grounded-answers.md`](docs/grounded-answers.md).
+[`docs/grounded-answers.md`](docs/grounded-answers.md). See
+[`docs/web-interface.md`](docs/web-interface.md) for the worker experience and
+frontend architecture.
