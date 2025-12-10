@@ -15,7 +15,10 @@ export type IconName =
   | "refresh"
   | "menu"
   | "close"
-  | "arrow";
+  | "arrow"
+  | "archive"
+  | "trash"
+  | "history";
 
 export function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {
   const common = {
@@ -47,6 +50,9 @@ export function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGEle
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     close: <><path d="m6 6 12 12M18 6 6 18" /></>,
     arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
+    archive: <><path d="M4 7h16v14H4zM3 3h18v4H3zM9 11h6" /></>,
+    trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6" /></>,
+    history: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></>,
   };
 
   return <svg {...common}>{paths[name]}</svg>;

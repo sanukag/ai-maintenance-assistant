@@ -13,6 +13,10 @@ const document = {
   extractor_name: "pypdf",
   extractor_version: "1",
   created_at: "2026-07-13T09:00:00Z",
+  lifecycle_status: "current" as const,
+  revision: 1,
+  supersedes_document_id: null,
+  lifecycle_updated_at: "2026-07-13T09:00:00Z",
 };
 
 const health = {
@@ -71,6 +75,10 @@ describe("AssistantWorkspace", () => {
     expect(screen.getAllByText("Pump manual")).toHaveLength(2);
     expect(screen.getByText("Disconnect and lock out the electrical supply.")).toBeInTheDocument();
     expect(screen.getByText("Page 8")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/backend/documents?limit=100&lifecycle_status=current",
+      { cache: "no-store" },
+    );
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(
       "/api/backend/answers",
