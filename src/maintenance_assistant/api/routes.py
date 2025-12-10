@@ -16,12 +16,14 @@ from maintenance_assistant.api.schemas import (
     DocumentResponse,
     HealthResponse,
     IngestionResponse,
+    ReindexResponse,
+    RevisionHistoryResponse,
     SearchRequest,
     SearchResponse,
     SearchResultResponse,
 )
 from maintenance_assistant.api.services import ApiServices, get_services
-from maintenance_assistant.ingestion import IngestionStatus
+from maintenance_assistant.ingestion import DocumentLifecycleStatus, IngestionStatus
 
 router = APIRouter()
 _UPLOAD_BLOCK_SIZE = 1024 * 1024
@@ -76,11 +78,16 @@ async def upload_document(
 def list_documents(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    lifecycle_status: DocumentLifecycleStatus | None = Query(default=None),
     services: ApiServices = Depends(get_services),
 ) -> DocumentListResponse:
     """List locally stored documents from newest to oldest."""
 
-    documents = services.store.list_documents(limit=limit, offset=offset)
+    documents = services.store.list_documents(
+        limit=limit,
+        offset=offset,
+        lifecycle_status=lifecycle_status,
+    )
     return DocumentListResponse(
         items=[DocumentResponse.from_document(document) for document in documents],
         limit=limit,
@@ -103,6 +110,101 @@ def get_document(
     if document is None:
         raise ApiError(404, "document_not_found", "Document was not found")
     return DocumentResponse.from_document(document)
+
+
+@router.get(
+    "/documents/{document_id}/revisions",
+    response_model=RevisionHistoryResponse,
+    tags=["documents"],
+)
+def list_document_revisions(
+    document_id: str,
+    services: ApiServices = Depends(get_services),
+) -> RevisionHistoryResponse:
+    """Return every retained revision for one manual."""
+
+    revisions = services.store.list_revision_history(document_id)
+    return RevisionHistoryResponse(
+        items=[DocumentResponse.from_document(item) for item in revisions]
+    )
+
+
+@router.post(
+    "/documents/{document_id}/revisions",
+    response_model=IngestionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["documents"],
+)
+async def replace_document(
+    document_id: str,
+    file: UploadFile = File(...),
+    services: ApiServices = Depends(get_services),
+) -> IngestionResponse:
+    """Add a new revision and supersede the selected current manual."""
+
+    filename = _safe_filename(file.filename)
+    maximum_bytes = services.settings.max_document_size_mb * 1024 * 1024
+    try:
+        with tempfile.TemporaryDirectory(prefix="ama-revision-") as temporary_directory:
+            upload_path = Path(temporary_directory) / filename
+            await _write_upload(file, upload_path, maximum_bytes)
+            result = await run_in_threadpool(
+                services.ingestion.ingest_revision,
+                upload_path,
+                document_id,
+            )
+    finally:
+        await file.close()
+    return IngestionResponse.from_result(result)
+
+
+@router.post(
+    "/documents/{document_id}/archive",
+    response_model=DocumentResponse,
+    tags=["documents"],
+)
+def archive_document(
+    document_id: str,
+    services: ApiServices = Depends(get_services),
+) -> DocumentResponse:
+    """Archive a manual and exclude it from future retrieval."""
+
+    return DocumentResponse.from_document(services.store.archive_document(document_id))
+
+
+@router.post(
+    "/documents/{document_id}/reindex",
+    response_model=ReindexResponse,
+    tags=["documents"],
+)
+def reindex_document(
+    document_id: str,
+    services: ApiServices = Depends(get_services),
+) -> ReindexResponse:
+    """Regenerate every vector using the active embedding configuration."""
+
+    if services.embedding_provider is None:
+        raise ApiError(
+            503,
+            "embeddings_disabled",
+            "Re-indexing requires an enabled embedding provider",
+        )
+    return ReindexResponse.from_result(services.ingestion.reindex(document_id))
+
+
+@router.delete(
+    "/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["documents"],
+)
+def delete_document(
+    document_id: str,
+    services: ApiServices = Depends(get_services),
+) -> Response:
+    """Permanently delete a manual and all of its locally stored data."""
+
+    services.store.delete_document(document_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/search", response_model=SearchResponse, tags=["search"])

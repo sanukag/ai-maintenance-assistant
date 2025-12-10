@@ -23,6 +23,14 @@ class IngestionStatus(StrEnum):
     ALREADY_EXISTS = "already_exists"
 
 
+class DocumentLifecycleStatus(StrEnum):
+    """Whether a stored manual may contribute evidence to new answers."""
+
+    CURRENT = "current"
+    SUPERSEDED = "superseded"
+    ARCHIVED = "archived"
+
+
 @dataclass(frozen=True, slots=True)
 class ValidatedDocument:
     """A local document that is safe to pass to an extractor."""
@@ -127,6 +135,10 @@ class StoredDocument:
     extractor_name: str
     extractor_version: str
     created_at: datetime
+    lifecycle_status: DocumentLifecycleStatus = DocumentLifecycleStatus.CURRENT
+    revision: int = 1
+    supersedes_document_id: str | None = None
+    lifecycle_updated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,3 +183,13 @@ class IngestionResult:
     embedded_chunk_count: int = 0
     embedding_model: str | None = None
     embedding_input_tokens: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class ReindexResult:
+    """Embedding work completed for every chunk in one stored manual."""
+
+    document: StoredDocument
+    embedded_chunk_count: int
+    embedding_model: str
+    embedding_input_tokens: int

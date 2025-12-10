@@ -17,12 +17,15 @@ from typing import Sequence
 from uuid import uuid4
 
 from maintenance_assistant.ingestion.errors import (
+    DocumentLifecycleError,
+    DocumentLifecycleErrorCode,
     DuplicateDocumentError,
     IngestionError,
     IngestionErrorCode,
 )
 from maintenance_assistant.ingestion.models import (
     ChunkLocation,
+    DocumentLifecycleStatus,
     DocumentFormat,
     ExtractedDocument,
     PreparedChunk,
@@ -81,7 +84,31 @@ CREATE INDEX IF NOT EXISTS embeddings_model_dimensions_idx
 ON embeddings(model, dimensions);
 """
 
-_CURRENT_SCHEMA_VERSION = 2
+_MIGRATION_VERSION_3 = """
+ALTER TABLE documents
+ADD COLUMN lifecycle_status TEXT NOT NULL DEFAULT 'current'
+CHECK (lifecycle_status IN ('current', 'superseded', 'archived'));
+
+ALTER TABLE documents
+ADD COLUMN revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0);
+
+ALTER TABLE documents
+ADD COLUMN supersedes_document_id TEXT REFERENCES documents(id) ON DELETE SET NULL;
+
+ALTER TABLE documents
+ADD COLUMN lifecycle_updated_at TEXT;
+
+UPDATE documents SET lifecycle_updated_at = created_at
+WHERE lifecycle_updated_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS documents_lifecycle_status_idx
+ON documents(lifecycle_status);
+
+CREATE INDEX IF NOT EXISTS documents_supersedes_idx
+ON documents(supersedes_document_id);
+"""
+
+_CURRENT_SCHEMA_VERSION = 3
 
 
 class LocalDocumentStore:
@@ -107,6 +134,10 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_2)
                     connection.execute("PRAGMA user_version = 2")
                     version = 2
+                if version == 2:
+                    connection.executescript(_MIGRATION_VERSION_3)
+                    connection.execute("PRAGMA user_version = 3")
+                    version = 3
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"
@@ -149,6 +180,7 @@ class LocalDocumentStore:
         *,
         limit: int = 50,
         offset: int = 0,
+        lifecycle_status: DocumentLifecycleStatus | None = None,
     ) -> tuple[StoredDocument, ...]:
         """Return stored documents from newest to oldest."""
 
@@ -159,14 +191,14 @@ class LocalDocumentStore:
         self.initialise()
         try:
             with self._connection() as connection:
-                rows = connection.execute(
-                    """
-                    SELECT * FROM documents
-                    ORDER BY created_at DESC, id DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (limit, offset),
-                ).fetchall()
+                query = "SELECT * FROM documents"
+                parameters: list[object] = []
+                if lifecycle_status is not None:
+                    query += " WHERE lifecycle_status = ?"
+                    parameters.append(lifecycle_status.value)
+                query += " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+                parameters.extend((limit, offset))
+                rows = connection.execute(query, parameters).fetchall()
         except sqlite3.Error as error:
             raise IngestionError(
                 IngestionErrorCode.STORAGE_FAILED,
@@ -185,11 +217,133 @@ class LocalDocumentStore:
             ).fetchall()
         return tuple(self._chunk_from_row(row) for row in rows)
 
+    def list_revision_history(self, document_id: str) -> tuple[StoredDocument, ...]:
+        """Return the complete oldest-to-newest revision chain for one manual."""
+
+        self.initialise()
+        with self._connection() as connection:
+            rows = connection.execute("SELECT * FROM documents").fetchall()
+        documents = {row["id"]: row for row in rows}
+        selected = documents.get(document_id)
+        if selected is None:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                "Document was not found",
+            )
+
+        root_id = selected["id"]
+        visited: set[str] = set()
+        while documents[root_id]["supersedes_document_id"] is not None:
+            if root_id in visited:
+                raise IngestionError(
+                    IngestionErrorCode.STORAGE_FAILED,
+                    "Stored manual revision history contains a cycle",
+                )
+            visited.add(root_id)
+            root_id = documents[root_id]["supersedes_document_id"]
+
+        chain: list[sqlite3.Row] = []
+        next_id: str | None = root_id
+        while next_id is not None:
+            row = documents[next_id]
+            chain.append(row)
+            children = [
+                item
+                for item in rows
+                if item["supersedes_document_id"] == next_id
+            ]
+            if len(children) > 1:
+                raise IngestionError(
+                    IngestionErrorCode.STORAGE_FAILED,
+                    "Stored manual revision history contains conflicting revisions",
+                )
+            next_id = children[0]["id"] if children else None
+        return tuple(self._document_from_row(row) for row in chain)
+
+    def archive_document(self, document_id: str) -> StoredDocument:
+        """Archive a manual so it cannot contribute evidence to new answers."""
+
+        self.initialise()
+        updated_at = datetime.now(UTC)
+        with self._connection() as connection:
+            changed = connection.execute(
+                """
+                UPDATE documents
+                SET lifecycle_status = ?, lifecycle_updated_at = ?
+                WHERE id = ? AND lifecycle_status != ?
+                """,
+                (
+                    DocumentLifecycleStatus.ARCHIVED.value,
+                    updated_at.isoformat(),
+                    document_id,
+                    DocumentLifecycleStatus.ARCHIVED.value,
+                ),
+            ).rowcount
+            exists = changed or connection.execute(
+                "SELECT 1 FROM documents WHERE id = ?", (document_id,)
+            ).fetchone()
+        if not exists:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                "Document was not found",
+            )
+        stored = self.get_document(document_id)
+        if stored is None:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Archived document could not be read",
+            )
+        return stored
+
+    def delete_document(self, document_id: str) -> None:
+        """Permanently remove one manual, its chunks, vectors and stored file."""
+
+        document = self.get_document(document_id)
+        if document is None:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                "Document was not found",
+            )
+
+        document_directory = document.stored_path.parent
+        staged_directory = self.documents_directory / f".deleting-{document_id}-{uuid4()}"
+        staged = False
+        committed = False
+        try:
+            if document_directory.exists():
+                document_directory.rename(staged_directory)
+                staged = True
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                deleted = connection.execute(
+                    "DELETE FROM documents WHERE id = ?", (document_id,)
+                ).rowcount
+                if deleted != 1:
+                    raise DocumentLifecycleError(
+                        DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                        "Document was not found",
+                    )
+            committed = True
+        except DocumentLifecycleError:
+            raise
+        except (OSError, sqlite3.Error) as error:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Document could not be deleted from local storage",
+            ) from error
+        finally:
+            if staged and not committed and staged_directory.exists():
+                staged_directory.rename(document_directory)
+            if staged and committed:
+                shutil.rmtree(staged_directory, ignore_errors=True)
+
     def save(
         self,
         document: ExtractedDocument,
         chunks: Sequence[PreparedChunk],
         embeddings: Sequence[PreparedEmbedding] = (),
+        *,
+        supersedes_document_id: str | None = None,
     ) -> StoredDocument:
         """Atomically store a fully prepared document and its chunks."""
 
@@ -202,6 +356,7 @@ class LocalDocumentStore:
         self.initialise()
         document_id = str(uuid4())
         created_at = datetime.now(UTC)
+        revision = 1
         final_directory = self.documents_directory / document_id
         stored_filename = f"original{document.source.path.suffix.lower()}"
         relative_path = Path("documents") / document_id / stored_filename
@@ -228,13 +383,32 @@ class LocalDocumentStore:
                 if duplicate:
                     raise DuplicateDocumentError(duplicate["id"])
 
+                if supersedes_document_id is not None:
+                    previous = connection.execute(
+                        "SELECT lifecycle_status, revision FROM documents WHERE id = ?",
+                        (supersedes_document_id,),
+                    ).fetchone()
+                    if previous is None:
+                        raise DocumentLifecycleError(
+                            DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                            "The manual being replaced was not found",
+                        )
+                    if previous["lifecycle_status"] != DocumentLifecycleStatus.CURRENT:
+                        raise DocumentLifecycleError(
+                            DocumentLifecycleErrorCode.REVISION_CONFLICT,
+                            "Only a current manual can be replaced",
+                        )
+                    revision = previous["revision"] + 1
+
                 connection.execute(
                     """
                     INSERT INTO documents (
                         id, content_hash, original_filename, stored_path,
                         document_format, size_bytes, title, page_count,
-                        chunk_count, extractor_name, extractor_version, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        chunk_count, extractor_name, extractor_version, created_at,
+                        lifecycle_status, revision, supersedes_document_id,
+                        lifecycle_updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         document_id,
@@ -248,6 +422,10 @@ class LocalDocumentStore:
                         len(chunks),
                         document.extractor_name,
                         document.extractor_version,
+                        created_at.isoformat(),
+                        DocumentLifecycleStatus.CURRENT.value,
+                        revision,
+                        supersedes_document_id,
                         created_at.isoformat(),
                     ),
                 )
@@ -273,6 +451,19 @@ class LocalDocumentStore:
                         for embedding in embeddings
                     ],
                 )
+                if supersedes_document_id is not None:
+                    connection.execute(
+                        """
+                        UPDATE documents
+                        SET lifecycle_status = ?, lifecycle_updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            DocumentLifecycleStatus.SUPERSEDED.value,
+                            created_at.isoformat(),
+                            supersedes_document_id,
+                        ),
+                    )
                 temporary_directory.rename(final_directory)
                 moved_to_final = True
             committed = True
@@ -419,7 +610,9 @@ class LocalDocumentStore:
             SELECT embeddings.*, chunks.*
             FROM embeddings
             JOIN chunks ON chunks.id = embeddings.chunk_id
+            JOIN documents ON documents.id = chunks.document_id
             WHERE embeddings.model = ? AND embeddings.dimensions = ?
+              AND documents.lifecycle_status = 'current'
         """
         parameters: list[object] = [model, len(vector)]
         if document_id is not None:
@@ -481,6 +674,12 @@ class LocalDocumentStore:
             extractor_name=row["extractor_name"],
             extractor_version=row["extractor_version"],
             created_at=datetime.fromisoformat(row["created_at"]),
+            lifecycle_status=DocumentLifecycleStatus(row["lifecycle_status"]),
+            revision=row["revision"],
+            supersedes_document_id=row["supersedes_document_id"],
+            lifecycle_updated_at=datetime.fromisoformat(
+                row["lifecycle_updated_at"] or row["created_at"]
+            ),
         )
 
     @staticmethod
