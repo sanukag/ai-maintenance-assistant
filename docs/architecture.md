@@ -96,17 +96,20 @@ a stable local refusal with no citations.
   delegating ingestion, persistence and retrieval to the domain services.
 - `maintenance_assistant.cli` provides the first runnable interface to the
   ingestion service.
+- `web` owns the worker-facing Next.js application. Its server-side route
+  handler proxies browser requests to FastAPI so the UI and API remain separate
+  deployable processes without requiring browser cross-origin access.
 
 These boundaries are intentionally small and may evolve as real pipeline
 behaviour is implemented and tested.
 
 ## Container boundary
 
-The Docker image runs the same `ama-api` entry point as local development. It
-does not introduce a second application configuration or storage path. Compose
-sets the in-container data directory to `/app/data` and mounts a named volume
-there so the API process remains disposable while local documents and SQLite
-state persist.
+The API Docker image runs the same `ama-api` entry point as local development.
+The web image runs the production Next.js standalone server. Compose connects
+the web server to FastAPI on its internal network, sets the API data directory
+to `/app/data` and mounts a named volume there so both processes remain
+disposable while local documents and SQLite state persist.
 
 The initial container is deliberately bound to the host loopback interface.
 Containerisation does not add authentication or make the API safe to expose to

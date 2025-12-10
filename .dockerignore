@@ -16,3 +16,9 @@ docs
 .env
 .env.*
 .DS_Store
+node_modules
+.next
+web/node_modules
+web/.next
+**/*.test.ts
+**/*.test.tsx

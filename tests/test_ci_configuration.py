@@ -20,3 +20,9 @@ def test_ci_enforces_coverage_and_real_container_checks() -> None:
     assert "--cov-fail-under=90" in workflow
     assert 'AMA_RUN_CONTAINER_TESTS: "1"' in workflow
     assert "python -m pytest tests/container -q" in workflow
+    assert "name: Web checks" in workflow
+    assert "cache-dependency-path: web/package-lock.json" in workflow
+    assert "npm audit --omit=dev" in workflow
+    assert "npm test" in workflow
+    assert "npm run lint" in workflow
+    assert "npm run build" in workflow

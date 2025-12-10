@@ -44,6 +44,22 @@ def test_compose_configuration_is_valid() -> None:
         for volume in api["volumes"]
     )
     assert api["healthcheck"]["test"][0] == "CMD"
+    web = configuration["services"]["web"]
+    assert web["read_only"] is True
+    assert web["cap_drop"] == ["ALL"]
+    assert "no-new-privileges:true" in web["security_opt"]
+    assert web["environment"]["AMA_API_BASE_URL"] == "http://api:8000"
+    assert web["ports"] == [
+        {
+            "mode": "ingress",
+            "target": 3000,
+            "published": "3000",
+            "protocol": "tcp",
+            "host_ip": "127.0.0.1",
+        }
+    ]
+    assert web["depends_on"]["api"]["condition"] == "service_healthy"
+    assert web["healthcheck"]["test"][0] == "CMD"
 
 
 @pytest.mark.container
@@ -54,8 +70,12 @@ def test_compose_configuration_is_valid() -> None:
 def test_container_runs_as_non_root_and_preserves_documents() -> None:
     project = f"ama-test-{uuid4().hex[:8]}"
     port = _available_port()
+    web_port = _available_port()
+    while web_port == port:
+        web_port = _available_port()
     environment = os.environ | {
         "AMA_API_PORT": str(port),
+        "AMA_WEB_PORT": str(web_port),
         "AMA_EMBEDDING_PROVIDER": "none",
         "AMA_ANSWER_PROVIDER": "none",
     }
@@ -75,7 +95,10 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
             timeout=180,
         )
         base_url = f"http://127.0.0.1:{port}"
+        web_url = f"http://127.0.0.1:{web_port}"
         assert _json_request(f"{base_url}/health")["status"] == "ok"
+        assert "Ask your manuals" in _text_request(web_url)
+        assert _json_request(f"{web_url}/api/backend/health")["status"] == "ok"
 
         user = _compose(
             *compose,
@@ -87,6 +110,16 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
             environment=environment,
         )
         assert user.stdout.strip() == "10001"
+        web_user = _compose(
+            *compose,
+            "exec",
+            "-T",
+            "web",
+            "id",
+            "-u",
+            environment=environment,
+        )
+        assert web_user.stdout.strip() == "10001"
 
         ingested = _upload_text_document(base_url)
         document_id = ingested["document"]["id"]
@@ -141,6 +174,11 @@ def _available_port() -> int:
 def _json_request(url: str, request: Request | None = None) -> dict[str, object]:
     with urlopen(request or url, timeout=5) as response:
         return json.loads(response.read())
+
+
+def _text_request(url: str) -> str:
+    with urlopen(url, timeout=5) as response:
+        return response.read().decode("utf-8")
 
 
 def _upload_text_document(base_url: str) -> dict[str, object]:
