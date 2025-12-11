@@ -44,10 +44,10 @@ ama-evaluate-retrieval evals/retrieval-cases.json \
 ```
 
 The report contains every ranked result, aggregate metrics, embedding model and
-dimensions, and the configured chunk size and overlap. It does not include a
-timestamp, which makes configuration-to-configuration comparisons easier. Use
-a fresh evaluation data directory for each chunking experiment so the recorded
-settings match the stored chunks.
+dimensions, and the configured token budget, overlap and encoding. It does not
+include a timestamp, which makes configuration-to-configuration comparisons
+easier. Use a fresh evaluation data directory for each chunking experiment so
+the recorded settings match the stored chunks.
 
 An experimental score threshold can remove weak results:
 

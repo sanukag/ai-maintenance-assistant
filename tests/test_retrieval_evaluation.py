@@ -57,8 +57,8 @@ def _case(
 def _search_service(tmp_path: Path) -> tuple[VectorSearchService, Settings]:
     settings = Settings(
         data_directory=tmp_path / "data",
-        chunk_size_characters=80,
-        chunk_overlap_characters=0,
+        chunk_size_tokens=20,
+        chunk_overlap_tokens=0,
     )
     provider = KeywordEmbeddingProvider()
     pump = tmp_path / "pump-manual.txt"
@@ -358,8 +358,9 @@ def test_evaluator_measures_hits_recall_rank_and_abstention(tmp_path: Path) -> N
         configuration=RetrievalRunConfiguration(
             embedding_model="test-embedding",
             embedding_dimensions=3,
-            chunk_size_characters=80,
-            chunk_overlap_characters=0,
+            chunk_size_tokens=20,
+            chunk_overlap_tokens=0,
+            chunk_token_encoding="cl100k_base",
         ),
     )
 
@@ -369,8 +370,9 @@ def test_evaluator_measures_hits_recall_rank_and_abstention(tmp_path: Path) -> N
     assert report.configuration == RetrievalRunConfiguration(
         embedding_model="test-embedding",
         embedding_dimensions=3,
-        chunk_size_characters=80,
-        chunk_overlap_characters=0,
+        chunk_size_tokens=20,
+        chunk_overlap_tokens=0,
+        chunk_token_encoding="cl100k_base",
     )
     assert report.summary.total_cases == 3
     assert report.summary.answerable_cases == 2

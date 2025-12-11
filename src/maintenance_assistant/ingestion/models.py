@@ -107,6 +107,7 @@ class PreparedChunk:
     text: str
     character_count: int
     location: ChunkLocation
+    token_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +152,7 @@ class StoredChunk:
     text: str
     character_count: int
     location: ChunkLocation
+    token_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

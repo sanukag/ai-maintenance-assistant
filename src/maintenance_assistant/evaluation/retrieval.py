@@ -92,8 +92,9 @@ class RetrievalRunConfiguration:
 
     embedding_model: str
     embedding_dimensions: int
-    chunk_size_characters: int
-    chunk_overlap_characters: int
+    chunk_size_tokens: int
+    chunk_overlap_tokens: int
+    chunk_token_encoding: str
 
 
 @dataclass(frozen=True, slots=True)

@@ -181,6 +181,7 @@ class ChunkResponse(BaseModel):
     sequence: int
     text: str
     character_count: int
+    token_count: int | None
     location: ChunkLocationResponse
 
     @classmethod
@@ -193,6 +194,7 @@ class ChunkResponse(BaseModel):
             sequence=chunk.sequence,
             text=chunk.text,
             character_count=chunk.character_count,
+            token_count=chunk.token_count,
             location=ChunkLocationResponse(
                 page_start=chunk.location.page_start,
                 page_end=chunk.location.page_end,

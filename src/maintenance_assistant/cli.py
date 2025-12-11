@@ -188,8 +188,9 @@ def evaluation_main(argv: Sequence[str] | None = None) -> int:
             configuration=RetrievalRunConfiguration(
                 embedding_model=provider.model,
                 embedding_dimensions=provider.dimensions,
-                chunk_size_characters=settings.chunk_size_characters,
-                chunk_overlap_characters=settings.chunk_overlap_characters,
+                chunk_size_tokens=settings.chunk_size_tokens,
+                chunk_overlap_tokens=settings.chunk_overlap_tokens,
+                chunk_token_encoding=settings.chunk_token_encoding,
             ),
         )
         if arguments.output is not None:

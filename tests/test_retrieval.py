@@ -16,8 +16,8 @@ def test_vector_search_embeds_query_and_ranks_local_chunks(tmp_path: Path) -> No
     )
     settings = Settings(
         data_directory=tmp_path / "data",
-        chunk_size_characters=28,
-        chunk_overlap_characters=0,
+        chunk_size_tokens=7,
+        chunk_overlap_tokens=0,
     )
     provider = KeywordEmbeddingProvider()
     ingested = IngestionService(

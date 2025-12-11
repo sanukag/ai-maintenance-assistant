@@ -21,8 +21,8 @@ def _service(tmp_path: Path, provider: FixedAnswerProvider) -> GroundedAnswerSer
     )
     settings = Settings(
         data_directory=tmp_path / "data",
-        chunk_size_characters=30,
-        chunk_overlap_characters=0,
+        chunk_size_tokens=7,
+        chunk_overlap_tokens=0,
     )
     embeddings = KeywordEmbeddingProvider()
     IngestionService(settings, embedding_provider=embeddings).ingest(document)

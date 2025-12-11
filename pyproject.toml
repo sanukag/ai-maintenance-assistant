@@ -13,6 +13,7 @@ dependencies = [
     "openai>=2,<3",
     "pypdf>=5.7,<7",
     "python-multipart>=0.0.20,<1",
+    "tiktoken>=0.9,<1",
     "uvicorn>=0.34,<1",
 ]
 
@@ -43,3 +44,6 @@ source = ["maintenance_assistant"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+
+[tool.setuptools.package-data]
+maintenance_assistant = ["assets/*.tiktoken"]

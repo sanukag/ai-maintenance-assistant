@@ -11,6 +11,7 @@ DEFAULT_FILE_TYPES = (".pdf", ".txt", ".md")
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 VALID_EMBEDDING_PROVIDERS = frozenset({"none", "openai"})
 VALID_ANSWER_PROVIDERS = frozenset({"none", "openai"})
+VALID_TOKEN_ENCODINGS = frozenset({"cl100k_base"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,8 +21,9 @@ class Settings:
     data_directory: Path = Path("data")
     max_document_size_mb: int = 25
     supported_file_types: tuple[str, ...] = DEFAULT_FILE_TYPES
-    chunk_size_characters: int = 2400
-    chunk_overlap_characters: int = 400
+    chunk_size_tokens: int = 300
+    chunk_overlap_tokens: int = 40
+    chunk_token_encoding: str = "cl100k_base"
     embedding_provider: str = "none"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 512
@@ -43,18 +45,26 @@ class Settings:
         )
         file_types = _file_types(values.get("AMA_SUPPORTED_FILE_TYPES", ""))
         chunk_size = _positive_integer(
-            values.get("AMA_CHUNK_SIZE_CHARACTERS", "2400"),
-            "AMA_CHUNK_SIZE_CHARACTERS",
+            values.get("AMA_CHUNK_SIZE_TOKENS", "300"),
+            "AMA_CHUNK_SIZE_TOKENS",
         )
         chunk_overlap = _non_negative_integer(
-            values.get("AMA_CHUNK_OVERLAP_CHARACTERS", "400"),
-            "AMA_CHUNK_OVERLAP_CHARACTERS",
+            values.get("AMA_CHUNK_OVERLAP_TOKENS", "40"),
+            "AMA_CHUNK_OVERLAP_TOKENS",
         )
         if chunk_overlap >= chunk_size:
             raise ValueError(
-                "AMA_CHUNK_OVERLAP_CHARACTERS must be smaller than "
-                "AMA_CHUNK_SIZE_CHARACTERS"
+                "AMA_CHUNK_OVERLAP_TOKENS must be smaller than "
+                "AMA_CHUNK_SIZE_TOKENS"
             )
+        chunk_token_encoding = values.get(
+            "AMA_CHUNK_TOKEN_ENCODING", "cl100k_base"
+        ).strip()
+        if not chunk_token_encoding:
+            raise ValueError("AMA_CHUNK_TOKEN_ENCODING must not be empty")
+        if chunk_token_encoding not in VALID_TOKEN_ENCODINGS:
+            allowed = ", ".join(sorted(VALID_TOKEN_ENCODINGS))
+            raise ValueError(f"AMA_CHUNK_TOKEN_ENCODING must be one of: {allowed}")
         embedding_provider = values.get("AMA_EMBEDDING_PROVIDER", "none").strip().lower()
         if embedding_provider not in VALID_EMBEDDING_PROVIDERS:
             allowed = ", ".join(sorted(VALID_EMBEDDING_PROVIDERS))
@@ -101,8 +111,9 @@ class Settings:
             data_directory=Path(values.get("AMA_DATA_DIRECTORY", "data")).expanduser(),
             max_document_size_mb=max_size,
             supported_file_types=file_types,
-            chunk_size_characters=chunk_size,
-            chunk_overlap_characters=chunk_overlap,
+            chunk_size_tokens=chunk_size,
+            chunk_overlap_tokens=chunk_overlap,
+            chunk_token_encoding=chunk_token_encoding,
             embedding_provider=embedding_provider,
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,

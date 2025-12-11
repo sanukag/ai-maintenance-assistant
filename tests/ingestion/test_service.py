@@ -19,8 +19,8 @@ from tests.fakes import KeywordEmbeddingProvider
 def _settings(tmp_path: Path) -> Settings:
     return Settings(
         data_directory=tmp_path / "data",
-        chunk_size_characters=45,
-        chunk_overlap_characters=10,
+        chunk_size_tokens=10,
+        chunk_overlap_tokens=2,
     )
 
 
@@ -78,8 +78,8 @@ def test_service_embeds_chunks_during_ingestion(tmp_path: Path) -> None:
     path.write_text("Pump checks.\n\nValve checks.", encoding="utf-8")
     settings = Settings(
         data_directory=tmp_path / "data",
-        chunk_size_characters=15,
-        chunk_overlap_characters=0,
+        chunk_size_tokens=4,
+        chunk_overlap_tokens=0,
     )
     provider = KeywordEmbeddingProvider()
 

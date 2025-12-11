@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from maintenance_assistant.config import Settings
-from maintenance_assistant.ingestion.chunking import chunk_document
+from maintenance_assistant.ingestion.chunking import TiktokenCounter, chunk_document
 from maintenance_assistant.ingestion.errors import (
     DocumentLifecycleError,
     DocumentLifecycleErrorCode,
@@ -45,6 +45,7 @@ class IngestionService:
         self.settings = settings
         self.store = store or LocalDocumentStore(settings.data_directory)
         self.embedding_provider = embedding_provider
+        self.token_counter = TiktokenCounter(settings.chunk_token_encoding)
 
     def ingest(self, path: Path) -> IngestionResult:
         """Ingest one local document or return its existing stored record."""
@@ -58,8 +59,9 @@ class IngestionService:
         normalised = normalise_document(extracted)
         chunks = chunk_document(
             normalised,
-            chunk_size=self.settings.chunk_size_characters,
-            overlap=self.settings.chunk_overlap_characters,
+            chunk_size_tokens=self.settings.chunk_size_tokens,
+            overlap_tokens=self.settings.chunk_overlap_tokens,
+            token_counter=self.token_counter,
         )
         embeddings, input_tokens = self._embed_prepared_chunks(chunks)
         try:
@@ -105,8 +107,9 @@ class IngestionService:
         normalised = normalise_document(extracted)
         chunks = chunk_document(
             normalised,
-            chunk_size=self.settings.chunk_size_characters,
-            overlap=self.settings.chunk_overlap_characters,
+            chunk_size_tokens=self.settings.chunk_size_tokens,
+            overlap_tokens=self.settings.chunk_overlap_tokens,
+            token_counter=self.token_counter,
         )
         embeddings, input_tokens = self._embed_prepared_chunks(chunks)
         stored = self.store.save(
@@ -218,6 +221,7 @@ class IngestionService:
                 text=chunk.text,
                 character_count=chunk.character_count,
                 location=chunk.location,
+                token_count=chunk.token_count,
             )
             for chunk in chunks
         )

@@ -16,8 +16,8 @@ from tests.fakes import FixedAnswerProvider, KeywordEmbeddingProvider
 def _settings(tmp_path: Path, **overrides: object) -> Settings:
     values: dict[str, object] = {
         "data_directory": tmp_path / "data",
-        "chunk_size_characters": 28,
-        "chunk_overlap_characters": 0,
+        "chunk_size_tokens": 7,
+        "chunk_overlap_tokens": 0,
     }
     values.update(overrides)
     return Settings(**values)

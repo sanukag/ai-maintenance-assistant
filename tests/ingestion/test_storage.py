@@ -46,6 +46,7 @@ def _chunk(sequence: int = 0, text: str = "Check pressure.") -> PreparedChunk:
         text=text,
         character_count=len(text),
         location=ChunkLocation(headings=("Checks",), line_start=1, line_end=1),
+        token_count=len(text.split()),
     )
 
 
@@ -77,6 +78,7 @@ def test_store_saves_source_document_and_chunks(tmp_path: Path) -> None:
     assert store.get_document(stored.id) == stored
     chunks = store.list_chunks(stored.id)
     assert chunks[0].text == "Check pressure."
+    assert chunks[0].token_count == 2
     assert chunks[0].location.headings == ("Checks",)
 
 
@@ -233,7 +235,7 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
         ).fetchone()
     finally:
         connection.close()
-    assert version == 3
+    assert version == 4
     assert embedding_table == ("embeddings",)
     store = LocalDocumentStore(data_directory)
     migrated = store.get_document("existing-document")
@@ -241,7 +243,9 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
     assert migrated.lifecycle_status is DocumentLifecycleStatus.CURRENT
     assert migrated.revision == 1
     assert migrated.lifecycle_updated_at == migrated.created_at
-    assert store.list_chunks("existing-document")[0].text == "Existing procedure"
+    migrated_chunk = store.list_chunks("existing-document")[0]
+    assert migrated_chunk.text == "Existing procedure"
+    assert migrated_chunk.token_count is None
 
 
 def test_store_saves_vectors_with_new_document(tmp_path: Path) -> None:

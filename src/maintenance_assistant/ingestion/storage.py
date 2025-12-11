@@ -108,7 +108,13 @@ CREATE INDEX IF NOT EXISTS documents_supersedes_idx
 ON documents(supersedes_document_id);
 """
 
-_CURRENT_SCHEMA_VERSION = 3
+_MIGRATION_VERSION_4 = """
+ALTER TABLE chunks
+ADD COLUMN token_count INTEGER
+CHECK (token_count IS NULL OR token_count > 0);
+"""
+
+_CURRENT_SCHEMA_VERSION = 4
 
 
 class LocalDocumentStore:
@@ -138,6 +144,10 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_3)
                     connection.execute("PRAGMA user_version = 3")
                     version = 3
+                if version == 3:
+                    connection.executescript(_MIGRATION_VERSION_4)
+                    connection.execute("PRAGMA user_version = 4")
+                    version = 4
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"
@@ -434,8 +444,9 @@ class LocalDocumentStore:
                     """
                     INSERT INTO chunks (
                         id, document_id, sequence, text, character_count,
-                        page_start, page_end, headings, line_start, line_end
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        page_start, page_end, headings, line_start, line_end,
+                        token_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     chunk_rows,
                 )
@@ -531,6 +542,7 @@ class LocalDocumentStore:
                 text=chunk.text,
                 character_count=chunk.character_count,
                 location=chunk.location,
+                token_count=chunk.token_count,
             )
             for chunk in chunks
         )
@@ -695,6 +707,7 @@ class LocalDocumentStore:
             json.dumps(chunk.location.headings),
             chunk.location.line_start,
             chunk.location.line_end,
+            chunk.token_count,
         )
 
     @staticmethod
@@ -712,6 +725,7 @@ class LocalDocumentStore:
                 line_start=row["line_start"],
                 line_end=row["line_end"],
             ),
+            token_count=row["token_count"],
         )
 
 
