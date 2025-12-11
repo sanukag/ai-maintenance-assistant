@@ -13,6 +13,8 @@ VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 VALID_EMBEDDING_PROVIDERS = frozenset({"none", "openai"})
 VALID_ANSWER_PROVIDERS = frozenset({"none", "openai"})
 VALID_OCR_PROVIDERS = frozenset({"none", "tesseract"})
+VALID_VISUAL_ANALYSIS_PROVIDERS = frozenset({"none", "openai"})
+VALID_VISUAL_ANALYSIS_DETAILS = frozenset({"low", "high", "original", "auto"})
 VALID_TOKEN_ENCODINGS = frozenset({"cl100k_base"})
 
 
@@ -33,6 +35,14 @@ class Settings:
     ocr_page_timeout_seconds: int = 30
     ocr_max_pages: int = 100
     ocr_max_image_pixels: int = 50_000_000
+    visual_analysis_provider: str = "none"
+    visual_analysis_model: str = "gpt-5.6-terra"
+    visual_analysis_detail: str = "high"
+    visual_analysis_render_dpi: int = 150
+    visual_analysis_timeout_seconds: int = 60
+    visual_analysis_max_pages: int = 100
+    visual_analysis_max_image_pixels: int = 25_000_000
+    visual_analysis_max_output_tokens: int = 1_000
     embedding_provider: str = "none"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 512
@@ -114,6 +124,57 @@ class Settings:
             values.get("AMA_OCR_MAX_IMAGE_PIXELS", "50000000"),
             "AMA_OCR_MAX_IMAGE_PIXELS",
         )
+        visual_analysis_provider = values.get(
+            "AMA_VISUAL_ANALYSIS_PROVIDER", "none"
+        ).strip().lower()
+        if visual_analysis_provider not in VALID_VISUAL_ANALYSIS_PROVIDERS:
+            allowed = ", ".join(sorted(VALID_VISUAL_ANALYSIS_PROVIDERS))
+            raise ValueError(
+                f"AMA_VISUAL_ANALYSIS_PROVIDER must be one of: {allowed}"
+            )
+        visual_analysis_model = values.get(
+            "AMA_VISUAL_ANALYSIS_MODEL", "gpt-5.6-terra"
+        ).strip()
+        if not visual_analysis_model:
+            raise ValueError("AMA_VISUAL_ANALYSIS_MODEL must not be empty")
+        visual_analysis_detail = values.get(
+            "AMA_VISUAL_ANALYSIS_DETAIL", "high"
+        ).strip().lower()
+        if visual_analysis_detail not in VALID_VISUAL_ANALYSIS_DETAILS:
+            allowed = ", ".join(sorted(VALID_VISUAL_ANALYSIS_DETAILS))
+            raise ValueError(f"AMA_VISUAL_ANALYSIS_DETAIL must be one of: {allowed}")
+        visual_analysis_render_dpi = _positive_integer(
+            values.get("AMA_VISUAL_ANALYSIS_RENDER_DPI", "150"),
+            "AMA_VISUAL_ANALYSIS_RENDER_DPI",
+        )
+        if not 100 <= visual_analysis_render_dpi <= 300:
+            raise ValueError(
+                "AMA_VISUAL_ANALYSIS_RENDER_DPI must be between 100 and 300"
+            )
+        visual_analysis_timeout_seconds = _positive_integer(
+            values.get("AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS", "60"),
+            "AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS",
+        )
+        if visual_analysis_timeout_seconds > 600:
+            raise ValueError(
+                "AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS must not exceed 600"
+            )
+        visual_analysis_max_pages = _positive_integer(
+            values.get("AMA_VISUAL_ANALYSIS_MAX_PAGES", "100"),
+            "AMA_VISUAL_ANALYSIS_MAX_PAGES",
+        )
+        visual_analysis_max_image_pixels = _positive_integer(
+            values.get("AMA_VISUAL_ANALYSIS_MAX_IMAGE_PIXELS", "25000000"),
+            "AMA_VISUAL_ANALYSIS_MAX_IMAGE_PIXELS",
+        )
+        visual_analysis_max_output_tokens = _positive_integer(
+            values.get("AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS", "1000"),
+            "AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS",
+        )
+        if visual_analysis_max_output_tokens > 5_000:
+            raise ValueError(
+                "AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS must not exceed 5000"
+            )
         embedding_provider = values.get("AMA_EMBEDDING_PROVIDER", "none").strip().lower()
         if embedding_provider not in VALID_EMBEDDING_PROVIDERS:
             allowed = ", ".join(sorted(VALID_EMBEDDING_PROVIDERS))
@@ -164,7 +225,9 @@ class Settings:
         )
         openai_api_key = values.get("OPENAI_API_KEY", "").strip() or None
         if (
-            embedding_provider == "openai" or answer_provider == "openai"
+            embedding_provider == "openai"
+            or answer_provider == "openai"
+            or visual_analysis_provider == "openai"
         ) and openai_api_key is None:
             raise ValueError(
                 "OPENAI_API_KEY is required when an OpenAI provider is enabled"
@@ -188,6 +251,14 @@ class Settings:
             ocr_page_timeout_seconds=ocr_page_timeout_seconds,
             ocr_max_pages=ocr_max_pages,
             ocr_max_image_pixels=ocr_max_image_pixels,
+            visual_analysis_provider=visual_analysis_provider,
+            visual_analysis_model=visual_analysis_model,
+            visual_analysis_detail=visual_analysis_detail,
+            visual_analysis_render_dpi=visual_analysis_render_dpi,
+            visual_analysis_timeout_seconds=visual_analysis_timeout_seconds,
+            visual_analysis_max_pages=visual_analysis_max_pages,
+            visual_analysis_max_image_pixels=visual_analysis_max_image_pixels,
+            visual_analysis_max_output_tokens=visual_analysis_max_output_tokens,
             embedding_provider=embedding_provider,
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,

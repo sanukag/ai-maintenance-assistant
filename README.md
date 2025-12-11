@@ -73,6 +73,27 @@ document cannot be ingested. PDF pages without an embedded text layer and
 pages retain their existing text, including within mixed digital/scanned PDFs.
 Password-protected PDFs remain unsupported.
 
+### Enable image and diagram understanding
+
+Visual analysis is disabled by default because rendered document pages are
+sent to the configured provider. Enable it with embeddings so descriptions of
+equipment photographs, schematics, wiring and flow diagrams, drawings, charts
+and tables become searchable evidence:
+
+```bash
+export AMA_VISUAL_ANALYSIS_PROVIDER=openai
+export AMA_EMBEDDING_PROVIDER=openai
+export OPENAI_API_KEY=your-project-api-key
+ama-ingest /path/to/maintenance-manual.pdf
+```
+
+Every PDF page is checked, including pages with digital text and scanned pages.
+Only maintenance-relevant visual descriptions are added; text-only pages,
+logos and decorative graphics are filtered. Descriptions retain their source
+page and flow through the same chunking, embedding, hybrid retrieval and
+grounded-citation path as extracted text. Existing manuals must be re-indexed
+after enabling visual analysis.
+
 The Manuals page retains revision history while ensuring only current manuals
 contribute to search and answers. Workers can replace, archive, re-index or
 permanently delete a manual through explicit lifecycle controls.
@@ -186,6 +207,8 @@ volume or enabling an external embedding provider.
 
 See [`docs/document-ingestion.md`](docs/document-ingestion.md) for pipeline,
 storage and limitation details. See
+[`docs/visual-document-understanding.md`](docs/visual-document-understanding.md)
+for visual enrichment, privacy, configuration and accuracy limits. See
 [`docs/embeddings-and-vector-search.md`](docs/embeddings-and-vector-search.md)
 for the embedding and retrieval design. The HTTP routes and examples are in
 [`docs/application-api.md`](docs/application-api.md). Grounding, citation

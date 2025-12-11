@@ -25,6 +25,9 @@ extract text and source metadata
 recognise textless pages locally when required
       |
       v
+optionally describe maintenance visuals on every rendered page
+      |
+      v
 normalise extracted content
       |
       v
@@ -84,6 +87,8 @@ a stable local refusal with no citations.
 - Embeddings are an explicit opt-in because chunk text leaves the local machine.
 - Answer generation is a separate explicit opt-in because selected chunks and
   the user's question are sent to the configured provider.
+- Visual analysis is a separate explicit opt-in because rendered PDF pages and
+  uploaded document images are sent to the configured provider.
 - Returned vectors are stored in SQLite and searched locally.
 - Parsing, chunking and persistence remain separate components so they can be
   tested and replaced independently.
@@ -104,6 +109,8 @@ a stable local refusal with no citations.
   Embeddings API implementation.
 - `maintenance_assistant.ocr` owns the local OCR contract and bounded Tesseract
   process integration.
+- `maintenance_assistant.vision` owns typed visual-analysis results, image
+  privacy controls and the OpenAI Responses API integration.
 - `maintenance_assistant.retrieval` combines local vector and SQLite full-text
   rankings with weighted reciprocal rank fusion.
 - `maintenance_assistant.answering` owns evidence labelling, the real OpenAI

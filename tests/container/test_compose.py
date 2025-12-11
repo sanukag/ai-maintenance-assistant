@@ -32,7 +32,9 @@ def test_compose_configuration_is_valid() -> None:
     assert api["environment"]["AMA_DATA_DIRECTORY"] == "/app/data"
     assert api["environment"]["AMA_ANSWER_PROVIDER"] in {"none", "openai"}
     assert api["environment"]["AMA_OCR_PROVIDER"] in {"none", "tesseract"}
+    assert api["environment"]["AMA_VISUAL_ANALYSIS_PROVIDER"] in {"none", "openai"}
     assert int(api["environment"]["AMA_OCR_DPI"]) >= 150
+    assert int(api["environment"]["AMA_VISUAL_ANALYSIS_RENDER_DPI"]) >= 100
     assert int(api["environment"]["AMA_ANSWER_MAX_OUTPUT_TOKENS"]) > 0
     assert api["ports"] == [
         {
@@ -82,6 +84,7 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
         "AMA_WEB_PORT": str(web_port),
         "AMA_EMBEDDING_PROVIDER": "none",
         "AMA_ANSWER_PROVIDER": "none",
+        "AMA_VISUAL_ANALYSIS_PROVIDER": "none",
     }
     environment.pop("OPENAI_API_KEY", None)
     compose = ("--project-name", project)
@@ -104,6 +107,7 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
         assert health["status"] == "ok"
         assert health["ocr"] == "available"
         assert health["ocr_engine"] == "tesseract"
+        assert health["visual_analysis"] == "disabled"
         assert "Ask your manuals" in _text_request(web_url)
         assert _json_request(f"{web_url}/api/backend/health")["status"] == "ok"
 

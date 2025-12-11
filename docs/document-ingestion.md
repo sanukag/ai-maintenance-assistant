@@ -18,13 +18,16 @@ calls the explicitly configured provider.
 4. Extract digital PDF text by page. Render only pages without a text layer and
    recognise them locally with Tesseract. Image documents use the same local
    OCR engine; Markdown and UTF-8 text preserve their structural locations.
-5. Normalise Unicode, line endings, control characters and excessive blank
+5. When enabled, render every PDF page and analyse maintenance-relevant images,
+   diagrams, drawings, charts and tables. Add only useful visual descriptions
+   as page-cited segments; standalone document images use the same stage.
+6. Normalise Unicode, line endings, control characters and excessive blank
    lines without rewriting the document's meaning.
-6. Split text into section-aligned parent context and smaller retrieval children
+7. Split text into section-aligned parent context and smaller retrieval children
    using configurable model-token budgets and word-aligned child overlap.
-7. When enabled, create one embedding for every child chunk; parents are stored
+8. When enabled, create one embedding for every child chunk; parents are stored
    as context and are not embedded separately.
-8. Copy the original into controlled local storage and save its metadata,
+9. Copy the original into controlled local storage and save its metadata,
    lifecycle state, chunks and vectors to SQLite in one transaction.
 
 The source copy is hashed again before storage. Ingestion stops if the document
@@ -76,6 +79,14 @@ source copies are removed.
 | `AMA_OCR_PAGE_TIMEOUT_SECONDS` | `30` | Maximum recognition time per image/page |
 | `AMA_OCR_MAX_PAGES` | `100` | Maximum textless PDF pages recognised per request |
 | `AMA_OCR_MAX_IMAGE_PIXELS` | `50000000` | Maximum rendered or uploaded image pixels |
+| `AMA_VISUAL_ANALYSIS_PROVIDER` | `none` | `none` or opt-in `openai` page analysis |
+| `AMA_VISUAL_ANALYSIS_MODEL` | `gpt-5.6-terra` | Image-capable Responses API model |
+| `AMA_VISUAL_ANALYSIS_DETAIL` | `high` | Provider image fidelity: `low`, `high`, `original` or `auto` |
+| `AMA_VISUAL_ANALYSIS_RENDER_DPI` | `150` | PDF resolution sent for visual analysis |
+| `AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS` | `60` | Maximum provider time per page |
+| `AMA_VISUAL_ANALYSIS_MAX_PAGES` | `100` | Maximum analysed PDF pages per request |
+| `AMA_VISUAL_ANALYSIS_MAX_IMAGE_PIXELS` | `25000000` | Maximum rendered page pixels |
+| `AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS` | `1000` | Maximum typed description output per page |
 | `AMA_CHUNK_SIZE_TOKENS` | `300` | Maximum model tokens in a retrieval chunk |
 | `AMA_CHUNK_OVERLAP_TOKENS` | `40` | Maximum repeated model tokens between chunks |
 | `AMA_PARENT_CHUNK_SIZE_TOKENS` | `900` | Maximum model tokens in answer context |
@@ -105,7 +116,8 @@ A successful request returns either `completed` or `already_exists`. Failures
 use stable codes such as `unsupported_type`, `file_too_large`,
 `invalid_document`, `encrypted_document`, `no_extractable_text`,
 `ocr_unavailable`, `ocr_timed_out`, `ocr_failed`, `embedding_failed` and
-`storage_failed`.
+`visual_analysis_unavailable`, `visual_analysis_timed_out`,
+`visual_analysis_failed` and `storage_failed`.
 
 The command-line interface prints safe messages. Underlying exceptions remain
 available to application logging without exposing document content.
@@ -114,6 +126,11 @@ available to application logging without exposing document content.
 
 - Handwriting, complex diagrams and low-quality scans may not be recognised
   accurately; workers must verify extracted procedures against the source.
+- Visual descriptions are model-generated evidence aids, not authoritative
+  interpretations. Small labels, rotated pages, subtle line styles, precise
+  spatial relationships and object counts can be misunderstood.
+- Enabling visual analysis sends rendered pages to OpenAI. OCR, source storage,
+  chunking and retrieval storage remain local, but visual analysis is not local.
 - Only installed Tesseract languages are available. The container includes
   English language data by default.
 - Password-protected PDFs are rejected.

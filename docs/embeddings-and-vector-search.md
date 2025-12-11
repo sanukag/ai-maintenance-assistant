@@ -28,6 +28,11 @@ queries to the OpenAI API. It does not upload the original document file.
 Original files, document metadata, chunks and returned vectors remain in the
 configured local data directory.
 
+When visual analysis is enabled separately, its generated page descriptions
+become ordinary source-aware chunk text and are embedded in the same batches.
+The embedding provider receives the description, not the rendered image; the
+visual provider owns the separate rendered-page privacy boundary.
+
 Enable it explicitly:
 
 ```bash

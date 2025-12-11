@@ -17,7 +17,8 @@ The interface has three focused areas:
   and Markdown.
 - **Settings** shows service readiness, active provider models, local-data and
   privacy boundaries, local OCR availability, API documentation and developer
-  runtime information.
+  runtime information. It also reports whether image and diagram understanding
+  is active and which model provides it.
 
 The navigation becomes a drawer on narrow screens. Tables and answer sources
 collapse progressively so important actions remain usable on a workshop tablet
