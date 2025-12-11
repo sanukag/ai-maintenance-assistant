@@ -9,6 +9,7 @@ from hashlib import sha256
 import json
 from math import isfinite, sqrt
 from pathlib import Path
+import re
 import shutil
 import sqlite3
 import struct
@@ -28,6 +29,7 @@ from maintenance_assistant.ingestion.models import (
     DocumentLifecycleStatus,
     DocumentFormat,
     ExtractedDocument,
+    LexicalSearchResult,
     PreparedChunk,
     PreparedEmbedding,
     PreparedParentChunk,
@@ -141,7 +143,33 @@ ADD COLUMN parent_id TEXT REFERENCES parent_chunks(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS chunks_parent_id_idx ON chunks(parent_id);
 """
 
-_CURRENT_SCHEMA_VERSION = 5
+_MIGRATION_VERSION_6 = """
+CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
+    text,
+    tokenize = 'unicode61 remove_diacritics 2'
+);
+
+INSERT OR REPLACE INTO chunk_fts(rowid, text)
+SELECT rowid, text FROM chunks;
+
+CREATE TRIGGER IF NOT EXISTS chunks_fts_insert
+AFTER INSERT ON chunks BEGIN
+    INSERT INTO chunk_fts(rowid, text) VALUES (new.rowid, new.text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS chunks_fts_delete
+AFTER DELETE ON chunks BEGIN
+    DELETE FROM chunk_fts WHERE rowid = old.rowid;
+END;
+
+CREATE TRIGGER IF NOT EXISTS chunks_fts_update
+AFTER UPDATE OF text ON chunks BEGIN
+    DELETE FROM chunk_fts WHERE rowid = old.rowid;
+    INSERT INTO chunk_fts(rowid, text) VALUES (new.rowid, new.text);
+END;
+"""
+
+_CURRENT_SCHEMA_VERSION = 6
 
 
 class LocalDocumentStore:
@@ -179,6 +207,10 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_5)
                     connection.execute("PRAGMA user_version = 5")
                     version = 5
+                if version == 5:
+                    connection.executescript(_MIGRATION_VERSION_6)
+                    connection.execute("PRAGMA user_version = 6")
+                    version = 6
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"
@@ -840,6 +872,71 @@ class LocalDocumentStore:
                     chunk=chunk,
                     document=documents[chunk.document_id],
                     parent=parent,
+                    semantic_score=score,
+                    retrieval_methods=("semantic",),
+                )
+            )
+        return tuple(results)
+
+    def search_text(
+        self,
+        query_text: str,
+        *,
+        limit: int = 20,
+        document_id: str | None = None,
+    ) -> tuple[LexicalSearchResult, ...]:
+        """Rank current manual chunks with SQLite full-text search."""
+
+        if limit < 1:
+            raise ValueError("limit must be greater than zero")
+        expression = _fts_expression(query_text)
+        if not expression:
+            return ()
+        self.initialise()
+        query = """
+            SELECT chunks.*, bm25(chunk_fts) AS text_score
+            FROM chunk_fts
+            JOIN chunks ON chunks.rowid = chunk_fts.rowid
+            JOIN documents ON documents.id = chunks.document_id
+            WHERE chunk_fts MATCH ?
+              AND documents.lifecycle_status = 'current'
+        """
+        parameters: list[object] = [expression]
+        if document_id is not None:
+            query += " AND chunks.document_id = ?"
+            parameters.append(document_id)
+        query += " ORDER BY text_score, chunks.id LIMIT ?"
+        parameters.append(limit)
+        try:
+            with self._connection() as connection:
+                rows = connection.execute(query, parameters).fetchall()
+        except sqlite3.Error as error:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Local full-text search could not be completed",
+            ) from error
+
+        documents: dict[str, StoredDocument] = {}
+        parents: dict[str, StoredParentChunk | None] = {}
+        results: list[LexicalSearchResult] = []
+        for row in rows:
+            chunk = self._chunk_from_row(row)
+            if chunk.document_id not in documents:
+                document = self.get_document(chunk.document_id)
+                if document is None:
+                    continue
+                documents[chunk.document_id] = document
+            parent = None
+            if chunk.parent_id is not None:
+                if chunk.parent_id not in parents:
+                    parents[chunk.parent_id] = self.get_parent_chunk(chunk.parent_id)
+                parent = parents[chunk.parent_id]
+            results.append(
+                LexicalSearchResult(
+                    score=-float(row["text_score"]),
+                    chunk=chunk,
+                    document=documents[chunk.document_id],
+                    parent=parent,
                 )
             )
         return tuple(results)
@@ -962,6 +1059,20 @@ def _file_hash(path: Path) -> str:
         while block := source.read(64 * 1024):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _fts_expression(query_text: str) -> str:
+    fragments = re.findall(
+        r"[^\W_]+(?:[-./][^\W_]+)*",
+        query_text.casefold(),
+        flags=re.UNICODE,
+    )
+    phrases = []
+    for fragment in fragments:
+        tokens = re.findall(r"[^\W_]+", fragment, flags=re.UNICODE)
+        if tokens:
+            phrases.append(f'"{" ".join(tokens)}"')
+    return " OR ".join(dict.fromkeys(phrases))
 
 
 def _validate_chunk_hierarchy(

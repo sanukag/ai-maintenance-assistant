@@ -99,7 +99,8 @@ a stable local refusal with no citations.
   controlled source-file copies, vectors and schema migrations.
 - `maintenance_assistant.embeddings` owns the provider contract and real OpenAI
   Embeddings API implementation.
-- `maintenance_assistant.retrieval` embeds a query and searches local vectors.
+- `maintenance_assistant.retrieval` combines local vector and SQLite full-text
+  rankings with weighted reciprocal rank fusion.
 - `maintenance_assistant.answering` owns evidence labelling, the real OpenAI
   Responses API provider and citation validation.
 - `maintenance_assistant.api` owns HTTP validation and response models while

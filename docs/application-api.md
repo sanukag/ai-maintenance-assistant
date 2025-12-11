@@ -113,9 +113,11 @@ curl -X POST http://127.0.0.1:8000/search \
 ```
 
 Add `document_id` to restrict results to one stored document. Each result
-contains its cosine-similarity score, embedding model, safe document metadata,
-child chunk, larger `parent_context` and available source location. Search returns HTTP
-`503` with the `embeddings_disabled` code when no provider is configured.
+contains its normalised hybrid score, raw semantic and lexical diagnostic
+scores, contributing `retrieval_methods`, embedding model, safe document
+metadata, child chunk, larger `parent_context` and available source location.
+Search returns HTTP `503` with the `embeddings_disabled` code when semantic
+retrieval is enabled but no embedding provider is configured.
 
 ## Ask a grounded question
 
@@ -126,7 +128,7 @@ curl -X POST http://127.0.0.1:8000/answers \
 ```
 
 Add `document_id` to restrict the evidence to one stored document. The API
-embeds the question, ranks local child chunks, deduplicates shared parents and
+embeds the question, hybrid-ranks local child chunks, deduplicates shared parents and
 labels up to `max_sources` contexts `S1`, `S2` and so on. The configured answer
 model may use only those contexts. A successful response has this shape:
 

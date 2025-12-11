@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from os import environ
 from pathlib import Path
 from typing import Mapping
@@ -29,6 +30,10 @@ class Settings:
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 512
     embedding_batch_size: int = 128
+    retrieval_candidate_limit: int = 30
+    retrieval_rrf_k: int = 60
+    retrieval_semantic_weight: float = 1.0
+    retrieval_text_weight: float = 1.0
     answer_provider: str = "none"
     answer_model: str = "gpt-5.6-terra"
     answer_max_output_tokens: int = 1_000
@@ -94,6 +99,24 @@ class Settings:
         )
         if embedding_batch_size > 2048:
             raise ValueError("AMA_EMBEDDING_BATCH_SIZE must not exceed 2048")
+        retrieval_candidate_limit = _positive_integer(
+            values.get("AMA_RETRIEVAL_CANDIDATE_LIMIT", "30"),
+            "AMA_RETRIEVAL_CANDIDATE_LIMIT",
+        )
+        retrieval_rrf_k = _positive_integer(
+            values.get("AMA_RETRIEVAL_RRF_K", "60"),
+            "AMA_RETRIEVAL_RRF_K",
+        )
+        retrieval_semantic_weight = _non_negative_float(
+            values.get("AMA_RETRIEVAL_SEMANTIC_WEIGHT", "1"),
+            "AMA_RETRIEVAL_SEMANTIC_WEIGHT",
+        )
+        retrieval_text_weight = _non_negative_float(
+            values.get("AMA_RETRIEVAL_TEXT_WEIGHT", "1"),
+            "AMA_RETRIEVAL_TEXT_WEIGHT",
+        )
+        if retrieval_semantic_weight == retrieval_text_weight == 0:
+            raise ValueError("At least one retrieval weight must be greater than zero")
         answer_provider = values.get("AMA_ANSWER_PROVIDER", "none").strip().lower()
         if answer_provider not in VALID_ANSWER_PROVIDERS:
             allowed = ", ".join(sorted(VALID_ANSWER_PROVIDERS))
@@ -129,6 +152,10 @@ class Settings:
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,
             embedding_batch_size=embedding_batch_size,
+            retrieval_candidate_limit=retrieval_candidate_limit,
+            retrieval_rrf_k=retrieval_rrf_k,
+            retrieval_semantic_weight=retrieval_semantic_weight,
+            retrieval_text_weight=retrieval_text_weight,
             answer_provider=answer_provider,
             answer_model=answer_model,
             answer_max_output_tokens=answer_max_output_tokens,
@@ -153,6 +180,16 @@ def _non_negative_integer(value: str, setting_name: str) -> int:
     except ValueError as error:
         raise ValueError(f"{setting_name} must be a whole number") from error
     if parsed < 0:
+        raise ValueError(f"{setting_name} must be zero or greater")
+    return parsed
+
+
+def _non_negative_float(value: str, setting_name: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as error:
+        raise ValueError(f"{setting_name} must be a number") from error
+    if not isfinite(parsed) or parsed < 0:
         raise ValueError(f"{setting_name} must be zero or greater")
     return parsed
 

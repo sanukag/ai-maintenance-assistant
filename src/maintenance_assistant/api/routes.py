@@ -212,13 +212,13 @@ def search_documents(
     request: SearchRequest,
     services: ApiServices = Depends(get_services),
 ) -> SearchResponse:
-    """Search embedded chunks and return traceable ranked results."""
+    """Hybrid-search chunks and return traceable ranked results."""
 
     if services.search is None:
         raise ApiError(
             503,
             "embeddings_disabled",
-            "Semantic search requires an enabled embedding provider",
+            "Hybrid search requires an enabled embedding provider",
         )
     results = services.search.search(
         request.query,

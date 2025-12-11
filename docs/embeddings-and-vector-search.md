@@ -1,10 +1,12 @@
-# Embeddings and vector search
+# Embeddings and hybrid search
 
 ## Purpose
 
 Embeddings convert document chunks into numerical vectors. Chunks with similar
 meaning should have nearby vectors, allowing retrieval to find relevant source
-material even when a query uses different wording.
+material even when a query uses different wording. SQLite full-text search
+complements those vectors by preserving exact terms such as fault codes, part
+numbers and component names.
 
 The first production provider uses OpenAI's
 [`text-embedding-3-small`](https://developers.openai.com/api/docs/models/text-embedding-3-small)
@@ -68,7 +70,7 @@ re-embedding later.
 Existing schema-version-1 databases are migrated automatically without
 changing their documents or chunks.
 
-## Semantic search
+## Hybrid search
 
 Run:
 
@@ -76,13 +78,20 @@ Run:
 ama-search "pump seal replacement interval"
 ```
 
-The search path:
+The default search path:
 
 1. Creates an embedding for the query with the configured provider.
-2. Loads local vectors with the same model and dimensions.
-3. Calculates cosine similarity locally.
-4. Returns the highest-scoring children with filename, source location and their
+2. Ranks matching local vectors by cosine similarity.
+3. Independently ranks exact text matches with SQLite FTS5 and BM25.
+4. Combines the two ordered candidate lists with weighted reciprocal rank
+   fusion (RRF).
+5. Returns the highest-scoring children with filename, source location and their
    larger parent context.
+
+The public `score` is the fused RRF score normalised to a maximum of `1`. The
+API also exposes the raw `semantic_score`, `lexical_score` and
+`retrieval_methods` for diagnosis. Raw scores from the two retrieval methods
+are not added together because they have different scales.
 
 The child remains the precise retrieval anchor. Grounded answering deduplicates
 children belonging to the same parent and sends the larger parent section as
@@ -97,10 +106,21 @@ ama-search "pump isolation" --limit 3
 ama-search "pump isolation" --document-id <document-id>
 ```
 
-For the initial single-user corpus, application-level cosine ranking keeps the
-runtime simple and inspectable. A dedicated vector extension or database should
-be considered when corpus size makes loading matching vectors too slow or
-memory-intensive.
+Hybrid retrieval is configurable:
+
+```text
+AMA_RETRIEVAL_CANDIDATE_LIMIT=30
+AMA_RETRIEVAL_RRF_K=60
+AMA_RETRIEVAL_SEMANTIC_WEIGHT=1
+AMA_RETRIEVAL_TEXT_WEIGHT=1
+```
+
+The candidate limit controls how many results each method contributes before
+fusion. The two weights can favour semantic or exact-text ranking, but they
+cannot both be zero. For the initial single-user corpus, application-level
+cosine ranking plus SQLite FTS5 keeps the runtime local and inspectable. A
+dedicated search service should be considered when corpus size makes loading
+matching vectors too slow or memory-intensive.
 
 ## Model and dimensions
 

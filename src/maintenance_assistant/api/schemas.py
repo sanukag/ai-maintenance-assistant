@@ -147,7 +147,7 @@ class ReindexResponse(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    """A semantic query and optional document filter."""
+    """A hybrid query and optional document filter."""
 
     query: str = Field(min_length=1, max_length=2_000)
     limit: int = Field(default=5, ge=1, le=50)
@@ -175,7 +175,7 @@ class ChunkLocationResponse(BaseModel):
 
 
 class ChunkResponse(BaseModel):
-    """A stored text chunk returned by semantic search."""
+    """A stored text chunk returned by hybrid search."""
 
     id: str
     document_id: str
@@ -237,9 +237,12 @@ class ParentContextResponse(BaseModel):
 
 
 class SearchResultResponse(BaseModel):
-    """One semantically ranked chunk and its document metadata."""
+    """One hybrid-ranked chunk and its document metadata."""
 
     score: float
+    semantic_score: float | None
+    lexical_score: float | None
+    retrieval_methods: list[str]
     model: str
     document: DocumentResponse
     chunk: ChunkResponse
@@ -251,6 +254,9 @@ class SearchResultResponse(BaseModel):
 
         return cls(
             score=result.score,
+            semantic_score=result.semantic_score,
+            lexical_score=result.lexical_score,
+            retrieval_methods=list(result.retrieval_methods),
             model=result.model,
             document=DocumentResponse.from_document(result.document),
             chunk=ChunkResponse.from_chunk(result.chunk),

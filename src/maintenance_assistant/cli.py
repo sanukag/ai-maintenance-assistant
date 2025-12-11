@@ -9,7 +9,10 @@ import sys
 from typing import Sequence
 
 from maintenance_assistant.config import Settings
-from maintenance_assistant.embeddings import create_embedding_provider
+from maintenance_assistant.embeddings import (
+    EmbeddingProvider,
+    create_embedding_provider,
+)
 from maintenance_assistant.evaluation import (
     RetrievalEvaluationError,
     RetrievalEvaluationReport,
@@ -24,7 +27,7 @@ from maintenance_assistant.ingestion import (
     VectorSearchResult,
 )
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
-from maintenance_assistant.retrieval import VectorSearchService
+from maintenance_assistant.retrieval import HybridSearchService
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -80,7 +83,7 @@ def _vector_label(count: int) -> str:
 
 
 def search_main(argv: Sequence[str] | None = None) -> int:
-    """Run semantic search over locally stored document chunks."""
+    """Run hybrid search over locally stored document chunks."""
 
     parser = argparse.ArgumentParser(
         prog="ama-search",
@@ -96,12 +99,9 @@ def search_main(argv: Sequence[str] | None = None) -> int:
         provider = create_embedding_provider(settings)
         if provider is None:
             raise ValueError(
-                "semantic search requires AMA_EMBEDDING_PROVIDER=openai"
+                "hybrid search requires AMA_EMBEDDING_PROVIDER=openai"
             )
-        results = VectorSearchService(
-            LocalDocumentStore(settings.data_directory),
-            provider,
-        ).search(
+        results = _search_service(settings, provider).search(
             arguments.query,
             limit=arguments.limit,
             document_id=arguments.document_id,
@@ -177,10 +177,7 @@ def evaluation_main(argv: Sequence[str] | None = None) -> int:
             )
         dataset = load_retrieval_dataset(arguments.dataset)
         report = RetrievalEvaluator(
-            VectorSearchService(
-                LocalDocumentStore(settings.data_directory),
-                provider,
-            )
+            _search_service(settings, provider)
         ).evaluate(
             dataset,
             limit=arguments.limit,
@@ -192,6 +189,10 @@ def evaluation_main(argv: Sequence[str] | None = None) -> int:
                 chunk_overlap_tokens=settings.chunk_overlap_tokens,
                 parent_chunk_size_tokens=settings.parent_chunk_size_tokens,
                 chunk_token_encoding=settings.chunk_token_encoding,
+                retrieval_candidate_limit=settings.retrieval_candidate_limit,
+                retrieval_rrf_k=settings.retrieval_rrf_k,
+                retrieval_semantic_weight=settings.retrieval_semantic_weight,
+                retrieval_text_weight=settings.retrieval_text_weight,
             ),
         )
         if arguments.output is not None:
@@ -220,6 +221,20 @@ def evaluation_main(argv: Sequence[str] | None = None) -> int:
 def _validate_rate(value: float | None, option: str) -> None:
     if value is not None and not 0.0 <= value <= 1.0:
         raise ValueError(f"{option} must be between 0 and 1")
+
+
+def _search_service(
+    settings: Settings,
+    provider: EmbeddingProvider,
+) -> HybridSearchService:
+    return HybridSearchService(
+        LocalDocumentStore(settings.data_directory),
+        provider,
+        candidate_limit=settings.retrieval_candidate_limit,
+        rrf_k=settings.retrieval_rrf_k,
+        semantic_weight=settings.retrieval_semantic_weight,
+        text_weight=settings.retrieval_text_weight,
+    )
 
 
 def _print_evaluation_summary(report: RetrievalEvaluationReport) -> None:

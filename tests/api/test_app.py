@@ -97,6 +97,9 @@ def test_upload_browse_and_search_document(tmp_path: Path) -> None:
     assert "Valve isolation procedure." in parent["text"]
     assert parent["token_count"] > search.json()["results"][0]["chunk"]["token_count"]
     assert search.json()["results"][0]["score"] == pytest.approx(1.0)
+    assert search.json()["results"][0]["retrieval_methods"] == ["semantic", "text"]
+    assert search.json()["results"][0]["semantic_score"] == pytest.approx(1.0)
+    assert search.json()["results"][0]["lexical_score"] is not None
     assert provider.calls[-1] == ("How do I repair the pump?",)
 
 

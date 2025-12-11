@@ -362,6 +362,10 @@ def test_evaluator_measures_hits_recall_rank_and_abstention(tmp_path: Path) -> N
             chunk_overlap_tokens=0,
             parent_chunk_size_tokens=60,
             chunk_token_encoding="cl100k_base",
+            retrieval_candidate_limit=30,
+            retrieval_rrf_k=60,
+            retrieval_semantic_weight=1.0,
+            retrieval_text_weight=1.0,
         ),
     )
 
@@ -375,6 +379,10 @@ def test_evaluator_measures_hits_recall_rank_and_abstention(tmp_path: Path) -> N
         chunk_overlap_tokens=0,
         parent_chunk_size_tokens=60,
         chunk_token_encoding="cl100k_base",
+        retrieval_candidate_limit=30,
+        retrieval_rrf_k=60,
+        retrieval_semantic_weight=1.0,
+        retrieval_text_weight=1.0,
     )
     assert report.summary.total_cases == 3
     assert report.summary.answerable_cases == 2

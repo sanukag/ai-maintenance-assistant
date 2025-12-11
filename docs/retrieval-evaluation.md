@@ -5,7 +5,7 @@
 Retrieval evaluation measures whether the search stage finds the passages that
 maintenance workers need before those passages are sent to the answer model.
 It provides a baseline for comparing chunk sizes, embedding configurations,
-score thresholds and later hybrid-retrieval changes.
+score thresholds and hybrid-retrieval settings.
 
 The evaluator does not call the answer provider. It uses the configured
 embedding provider to search the local corpus, so an OpenAI-backed run sends the
@@ -44,10 +44,11 @@ ama-evaluate-retrieval evals/retrieval-cases.json \
 ```
 
 The report contains every ranked result, aggregate metrics, embedding model and
-dimensions, and the configured token budget, overlap and encoding. It does not
-include a timestamp, which makes configuration-to-configuration comparisons
-easier. Use a fresh evaluation data directory for each chunking experiment so
-the recorded settings match the stored chunks.
+dimensions, the configured token budget, overlap and encoding, and the hybrid
+candidate, RRF and weighting settings. It does not include a timestamp, which
+makes configuration-to-configuration comparisons easier. Use a fresh evaluation
+data directory for each chunking experiment so the recorded settings match the
+stored chunks.
 
 An experimental score threshold can remove weak results:
 
@@ -72,8 +73,8 @@ larger set containing realistic answerable and unanswerable questions.
   for which retrieval returned no chunks. Without a calibrated threshold, a
   nearest-neighbour search will usually return something and this value may be
   zero.
-- **Latency** measures only query embedding and retrieval in the current
-  process; it does not include answer generation.
+- **Latency** measures query embedding, vector ranking, full-text ranking and
+  fusion in the current process; it does not include answer generation.
 
 Source labels use a filename and a case-insensitive `text_contains` passage.
 This keeps labels stable when chunk sequences change. A passage stops matching
@@ -133,7 +134,8 @@ For every experiment:
 4. Compare retrieval quality, unanswerable behaviour and latency.
 5. Review individual misses before accepting an aggregate improvement.
 
-Token-aware parent-child chunking now provides the structural baseline. The next
-intended experiment is hybrid lexical and semantic retrieval with fused ranking.
-It should only replace dense-only ranking when the evaluation demonstrates a
-material improvement.
+Token-aware parent-child chunking and hybrid semantic/full-text retrieval now
+provide the structural baseline. Use the recorded semantic and text weights to
+compare dense-only, text-only and fused runs against the same reviewed dataset.
+A later learned reranker should only replace RRF when the evaluation demonstrates
+a material improvement.

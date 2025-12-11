@@ -209,6 +209,19 @@ class VectorSearchResult:
     chunk: StoredChunk
     document: StoredDocument
     parent: StoredParentChunk | None = None
+    semantic_score: float | None = None
+    lexical_score: float | None = None
+    retrieval_methods: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class LexicalSearchResult:
+    """A stored chunk ranked by SQLite full-text relevance."""
+
+    score: float
+    chunk: StoredChunk
+    document: StoredDocument
+    parent: StoredParentChunk | None = None
 
 
 @dataclass(frozen=True, slots=True)

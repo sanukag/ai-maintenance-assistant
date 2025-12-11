@@ -77,7 +77,8 @@ missing vectors without creating a duplicate document.
 ## Current limitations
 
 - The API returns complete responses rather than streaming partial text.
-- Retrieval uses cosine similarity without reranking or a minimum score.
+- Retrieval uses weighted reciprocal rank fusion over semantic and full-text
+  candidates, without a learned reranker or a calibrated minimum score.
 - Answer history and user feedback are not persisted.
 - The retrieval dataset does not yet measure answer correctness or
   citation entailment against representative maintenance manuals.
