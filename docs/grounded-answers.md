@@ -11,13 +11,15 @@ For each `POST /answers` request, the application:
 
 1. embeds the validated question with the configured embedding provider;
 2. searches the local SQLite vectors, optionally within one document;
-3. labels the selected chunks `S1`, `S2` and so on;
-4. sends the question and those chunks to the configured answer provider;
+3. collapses child hits belonging to the same parent section;
+4. labels the selected sources `S1`, `S2` and so on and sends their parent
+   context to the configured answer provider;
 5. requests a typed result containing `answerable`, answer text and source IDs;
 6. verifies the structured IDs and inline `[S#]` markers against the retrieved
    chunks; and
-7. maps valid citations back to document metadata, the exact evidence excerpt
-   and available page, heading or line locations.
+7. maps valid citations back to the retrieved child and the exact parent
+   evidence excerpt supplied to the model, with available page, heading or line
+   locations.
 
 Vector search always filters the joined document record to `current`. A
 superseded or archived manual therefore cannot be selected even when its exact
@@ -31,7 +33,8 @@ deployment can make its own cost, latency and quality trade-off.
 ## Grounding guarantees
 
 The application can guarantee that every returned citation identifier refers to
-one of the chunks retrieved for that request. It rejects:
+one of the sources selected for that request. The response retains the child
+retrieval anchor and identifies the parent context that was supplied. It rejects:
 
 - an answer with no citations or no inline source markers;
 - citation IDs that do not match the markers in the answer;
@@ -62,7 +65,7 @@ AMA_ANSWER_MAX_OUTPUT_TOKENS=1000
 OPENAI_API_KEY=your-project-api-key
 ```
 
-The question and retrieved chunk text leave the local machine when the OpenAI
+The question and selected parent context leave the local machine when the OpenAI
 answer provider is enabled. Original files, SQLite metadata and vectors remain
 local. Answer responses are not stored by the application in this initial
 version.
@@ -76,7 +79,7 @@ missing vectors without creating a duplicate document.
 - The API returns complete responses rather than streaming partial text.
 - Retrieval uses cosine similarity without reranking or a minimum score.
 - Answer history and user feedback are not persisted.
-- There is no evaluation dataset yet for measuring answer correctness or
+- The retrieval dataset does not yet measure answer correctness or
   citation entailment against representative maintenance manuals.
 - The local API has no authentication or rate limiting and must not be exposed
   directly to an untrusted network.

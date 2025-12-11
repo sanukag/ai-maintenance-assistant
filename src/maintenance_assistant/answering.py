@@ -12,7 +12,12 @@ from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, ConfigDict, Field
 
 from maintenance_assistant.config import Settings
-from maintenance_assistant.ingestion import StoredChunk, StoredDocument
+from maintenance_assistant.ingestion import (
+    StoredChunk,
+    StoredDocument,
+    StoredParentChunk,
+    VectorSearchResult,
+)
 from maintenance_assistant.retrieval import VectorSearchService
 
 _CITATION_PATTERN = re.compile(r"\[(S\d+)\]")
@@ -55,6 +60,7 @@ class GroundingSource:
     score: float
     document: StoredDocument
     chunk: StoredChunk
+    parent: StoredParentChunk | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +83,7 @@ class AnswerCitation:
     score: float
     document: StoredDocument
     chunk: StoredChunk
+    parent: StoredParentChunk | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,17 +203,19 @@ class GroundedAnswerService:
     ) -> GroundedAnswer:
         """Return an answer grounded exclusively in retrieved stored chunks."""
 
-        results = self.search.search(
+        candidates = self.search.search(
             question,
-            limit=max_sources,
+            limit=max_sources * 3,
             document_id=document_id,
         )
+        results = _distinct_parent_results(candidates, max_sources)
         sources = tuple(
             GroundingSource(
                 source_id=f"S{index}",
                 score=result.score,
                 document=result.document,
                 chunk=result.chunk,
+                parent=result.parent,
             )
             for index, result in enumerate(results, start=1)
         )
@@ -279,9 +288,12 @@ def _format_evidence(
             details.append(f"page={page}")
         if location.headings:
             details.append(f"headings={' > '.join(location.headings)}")
+        evidence = source.parent.text if source.parent is not None else source.chunk.text
+        if source.parent is not None:
+            details.append(f"parent={source.parent.sequence}")
         sections.append(
             f"<{source.source_id} {'; '.join(details)}>\n"
-            f"{source.chunk.text}\n</{source.source_id}>"
+            f"{evidence}\n</{source.source_id}>"
         )
     return "\n\n".join(sections)
 
@@ -313,6 +325,7 @@ def _validate_citations(
             score=source.score,
             document=source.document,
             chunk=source.chunk,
+            parent=source.parent,
         )
         for source_id in generated.citation_ids
         for source in (source_by_id[source_id],)
@@ -321,3 +334,24 @@ def _validate_citations(
 
 def _invalid_response(message: str) -> AnsweringError:
     return AnsweringError(AnsweringErrorCode.INVALID_RESPONSE, message)
+
+
+def _distinct_parent_results(
+    results: Sequence[VectorSearchResult],
+    limit: int,
+) -> tuple[VectorSearchResult, ...]:
+    selected: list[VectorSearchResult] = []
+    seen: set[str] = set()
+    for result in results:
+        identity = (
+            f"parent:{result.parent.id}"
+            if result.parent is not None
+            else f"chunk:{result.chunk.id}"
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        selected.append(result)
+        if len(selected) == limit:
+            break
+    return tuple(selected)

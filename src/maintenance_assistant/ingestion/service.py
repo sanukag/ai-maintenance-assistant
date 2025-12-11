@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from maintenance_assistant.config import Settings
-from maintenance_assistant.ingestion.chunking import chunk_document
+from maintenance_assistant.ingestion.chunking import (
+    TiktokenCounter,
+    chunk_document_hierarchy,
+)
 from maintenance_assistant.ingestion.errors import (
     DocumentLifecycleError,
     DocumentLifecycleErrorCode,
@@ -19,7 +22,9 @@ from maintenance_assistant.ingestion.extractors import extract_document
 from maintenance_assistant.ingestion.models import (
     IngestionResult,
     IngestionStatus,
+    NormalisedDocument,
     PreparedChunk,
+    PreparedChunkHierarchy,
     PreparedEmbedding,
     ReindexResult,
     StoredChunk,
@@ -45,6 +50,7 @@ class IngestionService:
         self.settings = settings
         self.store = store or LocalDocumentStore(settings.data_directory)
         self.embedding_provider = embedding_provider
+        self.token_counter = TiktokenCounter(settings.chunk_token_encoding)
 
     def ingest(self, path: Path) -> IngestionResult:
         """Ingest one local document or return its existing stored record."""
@@ -56,14 +62,15 @@ class IngestionService:
 
         extracted = extract_document(validated)
         normalised = normalise_document(extracted)
-        chunks = chunk_document(
-            normalised,
-            chunk_size=self.settings.chunk_size_characters,
-            overlap=self.settings.chunk_overlap_characters,
-        )
-        embeddings, input_tokens = self._embed_prepared_chunks(chunks)
+        hierarchy = self._prepare_hierarchy(normalised)
+        embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
         try:
-            stored = self.store.save(extracted, chunks, embeddings)
+            stored = self.store.save(
+                extracted,
+                hierarchy.children,
+                embeddings,
+                parents=hierarchy.parents,
+            )
         except DuplicateDocumentError as duplicate:
             stored = self.store.get_document(duplicate.document_id)
             if stored is None:
@@ -103,16 +110,13 @@ class IngestionService:
             )
         extracted = extract_document(validated)
         normalised = normalise_document(extracted)
-        chunks = chunk_document(
-            normalised,
-            chunk_size=self.settings.chunk_size_characters,
-            overlap=self.settings.chunk_overlap_characters,
-        )
-        embeddings, input_tokens = self._embed_prepared_chunks(chunks)
+        hierarchy = self._prepare_hierarchy(normalised)
+        embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
         stored = self.store.save(
             extracted,
-            chunks,
+            hierarchy.children,
             embeddings,
+            parents=hierarchy.parents,
             supersedes_document_id=document_id,
         )
         return IngestionResult(
@@ -139,9 +143,18 @@ class IngestionService:
                 DocumentLifecycleErrorCode.REVISION_CONFLICT,
                 "Re-indexing requires an enabled embedding provider",
             )
-        chunks = self.store.list_chunks(document_id)
-        embeddings, input_tokens = self._embed_stored_chunks(chunks)
-        self.store.save_embeddings(document_id, embeddings)
+        validated = validate_document(document.stored_path, self.settings)
+        extracted = extract_document(validated)
+        normalised = normalise_document(extracted)
+        hierarchy = self._prepare_hierarchy(normalised)
+        embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
+        document = self.store.replace_chunks(
+            document_id,
+            extracted,
+            hierarchy.parents,
+            hierarchy.children,
+            embeddings,
+        )
         return ReindexResult(
             document=document,
             embedded_chunk_count=len(embeddings),
@@ -208,6 +221,18 @@ class IngestionService:
             batch.input_tokens,
         )
 
+    def _prepare_hierarchy(
+        self,
+        normalised: NormalisedDocument,
+    ) -> PreparedChunkHierarchy:
+        return chunk_document_hierarchy(
+            normalised,
+            child_size_tokens=self.settings.chunk_size_tokens,
+            child_overlap_tokens=self.settings.chunk_overlap_tokens,
+            parent_size_tokens=self.settings.parent_chunk_size_tokens,
+            token_counter=self.token_counter,
+        )
+
     def _embed_stored_chunks(
         self,
         chunks: Sequence[StoredChunk],
@@ -218,6 +243,7 @@ class IngestionService:
                 text=chunk.text,
                 character_count=chunk.character_count,
                 location=chunk.location,
+                token_count=chunk.token_count,
             )
             for chunk in chunks
         )

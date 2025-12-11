@@ -13,7 +13,7 @@ import shutil
 import sqlite3
 import struct
 import tempfile
-from typing import Sequence
+from typing import Mapping, Sequence
 from uuid import uuid4
 
 from maintenance_assistant.ingestion.errors import (
@@ -30,9 +30,11 @@ from maintenance_assistant.ingestion.models import (
     ExtractedDocument,
     PreparedChunk,
     PreparedEmbedding,
+    PreparedParentChunk,
     StoredChunk,
     StoredDocument,
     StoredEmbedding,
+    StoredParentChunk,
     VectorSearchResult,
 )
 
@@ -108,7 +110,38 @@ CREATE INDEX IF NOT EXISTS documents_supersedes_idx
 ON documents(supersedes_document_id);
 """
 
-_CURRENT_SCHEMA_VERSION = 3
+_MIGRATION_VERSION_4 = """
+ALTER TABLE chunks
+ADD COLUMN token_count INTEGER
+CHECK (token_count IS NULL OR token_count > 0);
+"""
+
+_MIGRATION_VERSION_5 = """
+CREATE TABLE IF NOT EXISTS parent_chunks (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    text TEXT NOT NULL CHECK (length(text) > 0),
+    character_count INTEGER NOT NULL CHECK (character_count > 0),
+    token_count INTEGER NOT NULL CHECK (token_count > 0),
+    page_start INTEGER,
+    page_end INTEGER,
+    headings TEXT NOT NULL,
+    line_start INTEGER,
+    line_end INTEGER,
+    UNIQUE (document_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS parent_chunks_document_id_idx
+ON parent_chunks(document_id);
+
+ALTER TABLE chunks
+ADD COLUMN parent_id TEXT REFERENCES parent_chunks(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS chunks_parent_id_idx ON chunks(parent_id);
+"""
+
+_CURRENT_SCHEMA_VERSION = 5
 
 
 class LocalDocumentStore:
@@ -138,6 +171,14 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_3)
                     connection.execute("PRAGMA user_version = 3")
                     version = 3
+                if version == 3:
+                    connection.executescript(_MIGRATION_VERSION_4)
+                    connection.execute("PRAGMA user_version = 4")
+                    version = 4
+                if version == 4:
+                    connection.executescript(_MIGRATION_VERSION_5)
+                    connection.execute("PRAGMA user_version = 5")
+                    version = 5
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"
@@ -216,6 +257,27 @@ class LocalDocumentStore:
                 (document_id,),
             ).fetchall()
         return tuple(self._chunk_from_row(row) for row in rows)
+
+    def list_parent_chunks(self, document_id: str) -> tuple[StoredParentChunk, ...]:
+        """Return stored parent context sections in document order."""
+
+        self.initialise()
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT * FROM parent_chunks WHERE document_id = ? ORDER BY sequence",
+                (document_id,),
+            ).fetchall()
+        return tuple(self._parent_chunk_from_row(row) for row in rows)
+
+    def get_parent_chunk(self, parent_id: str) -> StoredParentChunk | None:
+        """Return one stored parent context section by identifier."""
+
+        self.initialise()
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM parent_chunks WHERE id = ?", (parent_id,)
+            ).fetchone()
+        return self._parent_chunk_from_row(row) if row else None
 
     def list_revision_history(self, document_id: str) -> tuple[StoredDocument, ...]:
         """Return the complete oldest-to-newest revision chain for one manual."""
@@ -343,6 +405,7 @@ class LocalDocumentStore:
         chunks: Sequence[PreparedChunk],
         embeddings: Sequence[PreparedEmbedding] = (),
         *,
+        parents: Sequence[PreparedParentChunk] = (),
         supersedes_document_id: str | None = None,
     ) -> StoredDocument:
         """Atomically store a fully prepared document and its chunks."""
@@ -353,6 +416,7 @@ class LocalDocumentStore:
                 "A document must contain at least one chunk",
             )
         _validate_prepared_embeddings(chunks, embeddings, require_complete=True)
+        _validate_chunk_hierarchy(parents, chunks)
         self.initialise()
         document_id = str(uuid4())
         created_at = datetime.now(UTC)
@@ -429,13 +493,31 @@ class LocalDocumentStore:
                         created_at.isoformat(),
                     ),
                 )
-                chunk_rows = [self._chunk_values(document_id, chunk) for chunk in chunks]
+                parent_rows = [
+                    self._parent_chunk_values(document_id, parent) for parent in parents
+                ]
+                connection.executemany(
+                    """
+                    INSERT INTO parent_chunks (
+                        id, document_id, sequence, text, character_count,
+                        token_count, page_start, page_end, headings,
+                        line_start, line_end
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    parent_rows,
+                )
+                parent_ids = {row[2]: row[0] for row in parent_rows}
+                chunk_rows = [
+                    self._chunk_values(document_id, chunk, parent_ids)
+                    for chunk in chunks
+                ]
                 connection.executemany(
                     """
                     INSERT INTO chunks (
                         id, document_id, sequence, text, character_count,
-                        page_start, page_end, headings, line_start, line_end
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        page_start, page_end, headings, line_start, line_end,
+                        token_count, parent_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     chunk_rows,
                 )
@@ -514,6 +596,111 @@ class LocalDocumentStore:
             ).fetchall()
         return tuple(self._chunk_from_row(row) for row in rows)
 
+    def replace_chunks(
+        self,
+        document_id: str,
+        extracted: ExtractedDocument,
+        parents: Sequence[PreparedParentChunk],
+        chunks: Sequence[PreparedChunk],
+        embeddings: Sequence[PreparedEmbedding],
+    ) -> StoredDocument:
+        """Atomically replace one manual's parsed hierarchy and vectors."""
+
+        if not chunks:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "A document must contain at least one chunk",
+            )
+        _validate_chunk_hierarchy(parents, chunks)
+        _validate_prepared_embeddings(chunks, embeddings, require_complete=True)
+        self.initialise()
+        try:
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                exists = connection.execute(
+                    "SELECT 1 FROM documents WHERE id = ?", (document_id,)
+                ).fetchone()
+                if exists is None:
+                    raise DocumentLifecycleError(
+                        DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                        "Document was not found",
+                    )
+                connection.execute(
+                    "DELETE FROM chunks WHERE document_id = ?", (document_id,)
+                )
+                connection.execute(
+                    "DELETE FROM parent_chunks WHERE document_id = ?", (document_id,)
+                )
+                parent_rows = [
+                    self._parent_chunk_values(document_id, parent) for parent in parents
+                ]
+                connection.executemany(
+                    """
+                    INSERT INTO parent_chunks (
+                        id, document_id, sequence, text, character_count,
+                        token_count, page_start, page_end, headings,
+                        line_start, line_end
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    parent_rows,
+                )
+                parent_ids = {row[2]: row[0] for row in parent_rows}
+                chunk_rows = [
+                    self._chunk_values(document_id, chunk, parent_ids)
+                    for chunk in chunks
+                ]
+                connection.executemany(
+                    """
+                    INSERT INTO chunks (
+                        id, document_id, sequence, text, character_count,
+                        page_start, page_end, headings, line_start, line_end,
+                        token_count, parent_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    chunk_rows,
+                )
+                chunk_ids = {row[2]: row[0] for row in chunk_rows}
+                connection.executemany(
+                    """
+                    INSERT INTO embeddings (
+                        chunk_id, model, dimensions, vector, magnitude, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        _embedding_values(chunk_ids[item.sequence], item)
+                        for item in embeddings
+                    ],
+                )
+                connection.execute(
+                    """
+                    UPDATE documents
+                    SET page_count = ?, chunk_count = ?,
+                        extractor_name = ?, extractor_version = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        extracted.page_count,
+                        len(chunks),
+                        extracted.extractor_name,
+                        extracted.extractor_version,
+                        document_id,
+                    ),
+                )
+        except DocumentLifecycleError:
+            raise
+        except sqlite3.Error as error:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Document chunks could not be replaced locally",
+            ) from error
+        stored = self.get_document(document_id)
+        if stored is None:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Re-indexed document could not be read",
+            )
+        return stored
+
     def save_embeddings(
         self,
         document_id: str,
@@ -531,6 +718,7 @@ class LocalDocumentStore:
                 text=chunk.text,
                 character_count=chunk.character_count,
                 location=chunk.location,
+                token_count=chunk.token_count,
             )
             for chunk in chunks
         )
@@ -632,6 +820,7 @@ class LocalDocumentStore:
         ranked.sort(key=lambda item: (-item[0], item[1].id))
 
         documents: dict[str, StoredDocument] = {}
+        parents: dict[str, StoredParentChunk | None] = {}
         results: list[VectorSearchResult] = []
         for score, chunk in ranked[:limit]:
             if chunk.document_id not in documents:
@@ -639,12 +828,18 @@ class LocalDocumentStore:
                 if document is None:
                     continue
                 documents[chunk.document_id] = document
+            parent = None
+            if chunk.parent_id is not None:
+                if chunk.parent_id not in parents:
+                    parents[chunk.parent_id] = self.get_parent_chunk(chunk.parent_id)
+                parent = parents[chunk.parent_id]
             results.append(
                 VectorSearchResult(
                     score=score,
                     model=model,
                     chunk=chunk,
                     document=documents[chunk.document_id],
+                    parent=parent,
                 )
             )
         return tuple(results)
@@ -683,7 +878,12 @@ class LocalDocumentStore:
         )
 
     @staticmethod
-    def _chunk_values(document_id: str, chunk: PreparedChunk) -> tuple[object, ...]:
+    def _chunk_values(
+        document_id: str,
+        chunk: PreparedChunk,
+        parent_ids: Mapping[int, str] | None = None,
+    ) -> tuple[object, ...]:
+        parents = parent_ids or {}
         return (
             str(uuid4()),
             document_id,
@@ -695,6 +895,27 @@ class LocalDocumentStore:
             json.dumps(chunk.location.headings),
             chunk.location.line_start,
             chunk.location.line_end,
+            chunk.token_count,
+            parents.get(chunk.parent_sequence),
+        )
+
+    @staticmethod
+    def _parent_chunk_values(
+        document_id: str,
+        parent: PreparedParentChunk,
+    ) -> tuple[object, ...]:
+        return (
+            str(uuid4()),
+            document_id,
+            parent.sequence,
+            parent.text,
+            parent.character_count,
+            parent.token_count,
+            parent.location.page_start,
+            parent.location.page_end,
+            json.dumps(parent.location.headings),
+            parent.location.line_start,
+            parent.location.line_end,
         )
 
     @staticmethod
@@ -712,6 +933,26 @@ class LocalDocumentStore:
                 line_start=row["line_start"],
                 line_end=row["line_end"],
             ),
+            token_count=row["token_count"],
+            parent_id=row["parent_id"],
+        )
+
+    @staticmethod
+    def _parent_chunk_from_row(row: sqlite3.Row) -> StoredParentChunk:
+        return StoredParentChunk(
+            id=row["id"],
+            document_id=row["document_id"],
+            sequence=row["sequence"],
+            text=row["text"],
+            character_count=row["character_count"],
+            token_count=row["token_count"],
+            location=ChunkLocation(
+                page_start=row["page_start"],
+                page_end=row["page_end"],
+                headings=tuple(json.loads(row["headings"])),
+                line_start=row["line_start"],
+                line_end=row["line_end"],
+            ),
         )
 
 
@@ -721,6 +962,60 @@ def _file_hash(path: Path) -> str:
         while block := source.read(64 * 1024):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _validate_chunk_hierarchy(
+    parents: Sequence[PreparedParentChunk],
+    chunks: Sequence[PreparedChunk],
+) -> None:
+    parent_sequences = [parent.sequence for parent in parents]
+    if len(parent_sequences) != len(set(parent_sequences)):
+        raise IngestionError(
+            IngestionErrorCode.STORAGE_FAILED,
+            "Parent chunk sequences must be unique",
+        )
+    available = set(parent_sequences)
+    referenced = {
+        chunk.parent_sequence
+        for chunk in chunks
+        if chunk.parent_sequence is not None
+    }
+    if not referenced.issubset(available):
+        raise IngestionError(
+            IngestionErrorCode.STORAGE_FAILED,
+            "A child chunk refers to an unavailable parent",
+        )
+    if parents and any(chunk.parent_sequence is None for chunk in chunks):
+        raise IngestionError(
+            IngestionErrorCode.STORAGE_FAILED,
+            "Every child chunk must refer to a parent",
+        )
+    if parents and referenced != available:
+        raise IngestionError(
+            IngestionErrorCode.STORAGE_FAILED,
+            "Every parent chunk must contain a child",
+        )
+    if parents and any(
+        chunk.token_count is None
+        or chunk.token_count < 1
+        or chunk.character_count != len(chunk.text)
+        for chunk in chunks
+    ):
+        raise IngestionError(
+            IngestionErrorCode.STORAGE_FAILED,
+            "Child chunk metadata is invalid",
+        )
+    for parent in parents:
+        if (
+            parent.sequence < 0
+            or parent.token_count < 1
+            or not parent.text.strip()
+            or parent.character_count != len(parent.text)
+        ):
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Parent chunk metadata is invalid",
+            )
 
 
 def _validate_prepared_embeddings(

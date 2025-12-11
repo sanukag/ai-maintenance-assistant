@@ -7,7 +7,10 @@ from maintenance_assistant.ingestion.errors import (
     IngestionError,
     IngestionErrorCode,
 )
-from maintenance_assistant.ingestion.chunking import chunk_document
+from maintenance_assistant.ingestion.chunking import (
+    chunk_document,
+    chunk_document_hierarchy,
+)
 from maintenance_assistant.ingestion.extractors import extract_document
 from maintenance_assistant.ingestion.models import (
     ChunkLocation,
@@ -20,12 +23,15 @@ from maintenance_assistant.ingestion.models import (
     NormalisedDocument,
     NormalisedSegment,
     PreparedChunk,
+    PreparedChunkHierarchy,
     PreparedEmbedding,
+    PreparedParentChunk,
     ReindexResult,
     SourceLocation,
     StoredChunk,
     StoredDocument,
     StoredEmbedding,
+    StoredParentChunk,
     ValidatedDocument,
     VectorSearchResult,
 )
@@ -51,15 +57,19 @@ __all__ = [
     "NormalisedDocument",
     "NormalisedSegment",
     "PreparedChunk",
+    "PreparedChunkHierarchy",
     "PreparedEmbedding",
+    "PreparedParentChunk",
     "ReindexResult",
     "SourceLocation",
     "StoredChunk",
     "StoredDocument",
     "StoredEmbedding",
+    "StoredParentChunk",
     "ValidatedDocument",
     "VectorSearchResult",
     "chunk_document",
+    "chunk_document_hierarchy",
     "extract_document",
     "normalise_document",
     "LocalDocumentStore",

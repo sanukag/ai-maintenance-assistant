@@ -44,10 +44,10 @@ ama-evaluate-retrieval evals/retrieval-cases.json \
 ```
 
 The report contains every ranked result, aggregate metrics, embedding model and
-dimensions, and the configured chunk size and overlap. It does not include a
-timestamp, which makes configuration-to-configuration comparisons easier. Use
-a fresh evaluation data directory for each chunking experiment so the recorded
-settings match the stored chunks.
+dimensions, and the configured token budget, overlap and encoding. It does not
+include a timestamp, which makes configuration-to-configuration comparisons
+easier. Use a fresh evaluation data directory for each chunking experiment so
+the recorded settings match the stored chunks.
 
 An experimental score threshold can remove weak results:
 
@@ -133,6 +133,7 @@ For every experiment:
 4. Compare retrieval quality, unanswerable behaviour and latency.
 5. Review individual misses before accepting an aggregate improvement.
 
-The next intended experiment is token-aware parent-child chunking, followed by
-hybrid lexical and semantic retrieval. These changes should only replace the
-baseline when the evaluation demonstrates a material improvement.
+Token-aware parent-child chunking now provides the structural baseline. The next
+intended experiment is hybrid lexical and semantic retrieval with fused ranking.
+It should only replace dense-only ranking when the evaluation demonstrates a
+material improvement.

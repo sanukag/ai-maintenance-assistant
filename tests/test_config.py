@@ -11,8 +11,10 @@ def test_settings_use_local_defaults() -> None:
     assert settings.data_directory == Path("data")
     assert settings.max_document_size_mb == 25
     assert settings.supported_file_types == DEFAULT_FILE_TYPES
-    assert settings.chunk_size_characters == 2400
-    assert settings.chunk_overlap_characters == 400
+    assert settings.chunk_size_tokens == 300
+    assert settings.chunk_overlap_tokens == 40
+    assert settings.parent_chunk_size_tokens == 900
+    assert settings.chunk_token_encoding == "cl100k_base"
     assert settings.embedding_provider == "none"
     assert settings.embedding_model == "text-embedding-3-small"
     assert settings.embedding_dimensions == 512
@@ -30,8 +32,10 @@ def test_settings_read_environment_values() -> None:
             "AMA_DATA_DIRECTORY": "~/maintenance-data",
             "AMA_MAX_DOCUMENT_SIZE_MB": "40",
             "AMA_SUPPORTED_FILE_TYPES": "PDF, .txt, pdf",
-            "AMA_CHUNK_SIZE_CHARACTERS": "1200",
-            "AMA_CHUNK_OVERLAP_CHARACTERS": "200",
+            "AMA_CHUNK_SIZE_TOKENS": "240",
+            "AMA_CHUNK_OVERLAP_TOKENS": "30",
+            "AMA_PARENT_CHUNK_SIZE_TOKENS": "720",
+            "AMA_CHUNK_TOKEN_ENCODING": "cl100k_base",
             "AMA_EMBEDDING_PROVIDER": "openai",
             "AMA_EMBEDDING_MODEL": "text-embedding-3-large",
             "AMA_EMBEDDING_DIMENSIONS": "1024",
@@ -47,8 +51,10 @@ def test_settings_read_environment_values() -> None:
     assert settings.data_directory == Path("~/maintenance-data").expanduser()
     assert settings.max_document_size_mb == 40
     assert settings.supported_file_types == (".pdf", ".txt")
-    assert settings.chunk_size_characters == 1200
-    assert settings.chunk_overlap_characters == 200
+    assert settings.chunk_size_tokens == 240
+    assert settings.chunk_overlap_tokens == 30
+    assert settings.parent_chunk_size_tokens == 720
+    assert settings.chunk_token_encoding == "cl100k_base"
     assert settings.embedding_provider == "openai"
     assert settings.embedding_model == "text-embedding-3-large"
     assert settings.embedding_dimensions == 1024
@@ -74,12 +80,18 @@ def test_settings_reject_unknown_log_level() -> None:
 @pytest.mark.parametrize(
     "environment",
     [
-        {"AMA_CHUNK_SIZE_CHARACTERS": "0"},
-        {"AMA_CHUNK_OVERLAP_CHARACTERS": "-1"},
+        {"AMA_CHUNK_SIZE_TOKENS": "0"},
+        {"AMA_CHUNK_OVERLAP_TOKENS": "-1"},
         {
-            "AMA_CHUNK_SIZE_CHARACTERS": "100",
-            "AMA_CHUNK_OVERLAP_CHARACTERS": "100",
+            "AMA_CHUNK_SIZE_TOKENS": "100",
+            "AMA_CHUNK_OVERLAP_TOKENS": "100",
         },
+        {
+            "AMA_CHUNK_SIZE_TOKENS": "100",
+            "AMA_PARENT_CHUNK_SIZE_TOKENS": "99",
+        },
+        {"AMA_CHUNK_TOKEN_ENCODING": " "},
+        {"AMA_CHUNK_TOKEN_ENCODING": "unknown"},
     ],
 )
 def test_settings_reject_invalid_chunk_limits(environment: dict[str, str]) -> None:

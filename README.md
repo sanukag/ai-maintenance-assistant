@@ -56,8 +56,8 @@ After installing the project, ingest a local PDF, text or Markdown document:
 ama-ingest /path/to/maintenance-manual.pdf
 ```
 
-The initial version stores the original document, its metadata and its
-traceable text chunks beneath `AMA_DATA_DIRECTORY` (`./data` by default). If
+The application stores the original document, its metadata, token-bounded child
+chunks and larger section context beneath `AMA_DATA_DIRECTORY` (`./data` by default). If
 the same content is submitted again, the existing document is returned rather
 than stored twice.
 
@@ -80,7 +80,7 @@ export OPENAI_API_KEY=your-project-api-key
 ama-ingest /path/to/maintenance-manual.pdf
 ```
 
-When enabled, document chunk text is sent to the OpenAI Embeddings API. Original
+When enabled, child chunk text is sent to the OpenAI Embeddings API. Original
 files, metadata and returned vectors remain in the local data directory.
 
 Search the embedded chunks with:
@@ -106,8 +106,8 @@ to create the stored vectors.
 
 ### Enable grounded answers
 
-Grounded answers retrieve evidence from the locally stored vectors and send
-only the question and selected chunks to the configured answer provider. Enable
+Grounded answers rank small child chunks, expand them to section-aligned parent
+context and send only the question and selected context to the configured answer provider. Enable
 both OpenAI-backed stages before starting the API:
 
 ```bash
@@ -120,8 +120,8 @@ ama-api
 Then ask a question through the web interface, `POST /answers` or the
 interactive `/docs` page.
 Every supported claim uses a marker such as `[S1]`; each returned citation
-contains the matching document, chunk, evidence excerpt and available page,
-heading or line range. The application refuses to return an answer when the
+contains the matching document, child retrieval anchor, parent evidence excerpt
+and available page, heading or line range. The application refuses to return an answer when the
 provider reports insufficient evidence or produces unverifiable citations.
 
 ## Run the application API

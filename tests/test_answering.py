@@ -21,8 +21,8 @@ def _service(tmp_path: Path, provider: FixedAnswerProvider) -> GroundedAnswerSer
     )
     settings = Settings(
         data_directory=tmp_path / "data",
-        chunk_size_characters=30,
-        chunk_overlap_characters=0,
+        chunk_size_tokens=7,
+        chunk_overlap_tokens=0,
     )
     embeddings = KeywordEmbeddingProvider()
     IngestionService(settings, embedding_provider=embeddings).ingest(document)
@@ -47,8 +47,23 @@ def test_grounded_answer_maps_verified_markers_to_local_chunks(tmp_path: Path) -
     assert result.citations[0].source_id == "S1"
     assert result.citations[0].document.original_filename == "pump-manual.txt"
     assert result.citations[0].chunk.text == "Pump isolation procedure."
+    assert result.citations[0].parent is not None
+    assert "Valve inspection procedure." in result.citations[0].parent.text
     assert provider.calls[0][0] == "How do I maintain the pump?"
     assert provider.calls[0][1][0].source_id == "S1"
+    assert provider.calls[0][1][0].parent is not None
+    assert "Valve inspection procedure." in provider.calls[0][1][0].parent.text
+
+
+def test_grounded_answer_deduplicates_children_from_the_same_parent(
+    tmp_path: Path,
+) -> None:
+    provider = FixedAnswerProvider()
+    service = _service(tmp_path, provider)
+
+    service.answer("How do I maintain the pump and valve?", max_sources=2)
+
+    assert len(provider.calls[0][1]) == 1
 
 
 def test_no_retrieved_evidence_returns_local_refusal_without_provider_call(

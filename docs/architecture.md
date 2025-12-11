@@ -25,7 +25,7 @@ extract text and source metadata
 normalise extracted content
       |
       v
-split content into traceable chunks
+split content into parent sections and retrieval children
       |
       v
 optionally create embeddings
@@ -34,8 +34,10 @@ optionally create embeddings
 store original, metadata, chunks and vectors locally
 ```
 
-Each stored chunk should retain enough source metadata to identify its original
-document and location. A failed stage should return a clear error without
+Each stored parent and child retains enough source metadata to identify its
+original document and location. Only children are embedded; a matched child
+expands to its section parent for grounded-answer context. A failed stage should
+return a clear error without
 leaving a partially ingested document behind.
 
 Each manual has a lifecycle state. A replacement is stored as a new immutable
@@ -50,10 +52,10 @@ contribute evidence.
 question
    |
    v
-embed query and search local vectors
+embed query and search child vectors
    |
    v
-label retrieved chunks S1, S2, ...
+deduplicate and label parent context S1, S2, ...
    |
    v
 request a typed answer from the configured provider
