@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion.chunking import (
@@ -29,13 +29,17 @@ from maintenance_assistant.ingestion.models import (
     ReindexResult,
     StoredChunk,
     StoredDocument,
+    ValidatedDocument,
 )
 from maintenance_assistant.ingestion.normalisation import normalise_document
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
 from maintenance_assistant.ingestion.validation import validate_document
+from maintenance_assistant.ocr import OCRProvider, create_ocr_provider
 
 if TYPE_CHECKING:
     from maintenance_assistant.embeddings import EmbeddingProvider
+
+_CONFIGURED_OCR_PROVIDER = object()
 
 
 class IngestionService:
@@ -46,10 +50,16 @@ class IngestionService:
         settings: Settings,
         store: LocalDocumentStore | None = None,
         embedding_provider: EmbeddingProvider | None = None,
+        ocr_provider: OCRProvider | None | object = _CONFIGURED_OCR_PROVIDER,
     ) -> None:
         self.settings = settings
         self.store = store or LocalDocumentStore(settings.data_directory)
         self.embedding_provider = embedding_provider
+        self.ocr_provider = (
+            create_ocr_provider(settings)
+            if ocr_provider is _CONFIGURED_OCR_PROVIDER
+            else cast(OCRProvider | None, ocr_provider)
+        )
         self.token_counter = TiktokenCounter(settings.chunk_token_encoding)
 
     def ingest(self, path: Path) -> IngestionResult:
@@ -60,7 +70,7 @@ class IngestionService:
         if existing is not None:
             return self._result_for_existing(existing)
 
-        extracted = extract_document(validated)
+        extracted = self._extract(validated)
         normalised = normalise_document(extracted)
         hierarchy = self._prepare_hierarchy(normalised)
         embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
@@ -108,7 +118,7 @@ class IngestionService:
                 DocumentLifecycleErrorCode.IDENTICAL_REVISION,
                 "The replacement is identical to a manual already in the library",
             )
-        extracted = extract_document(validated)
+        extracted = self._extract(validated)
         normalised = normalise_document(extracted)
         hierarchy = self._prepare_hierarchy(normalised)
         embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
@@ -144,7 +154,7 @@ class IngestionService:
                 "Re-indexing requires an enabled embedding provider",
             )
         validated = validate_document(document.stored_path, self.settings)
-        extracted = extract_document(validated)
+        extracted = self._extract(validated)
         normalised = normalise_document(extracted)
         hierarchy = self._prepare_hierarchy(normalised)
         embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
@@ -231,6 +241,17 @@ class IngestionService:
             child_overlap_tokens=self.settings.chunk_overlap_tokens,
             parent_size_tokens=self.settings.parent_chunk_size_tokens,
             token_counter=self.token_counter,
+        )
+
+    def _extract(self, document: ValidatedDocument):
+        return extract_document(
+            document,
+            ocr_provider=self.ocr_provider,
+            ocr_language=self.settings.ocr_language,
+            ocr_dpi=self.settings.ocr_dpi,
+            ocr_page_timeout_seconds=self.settings.ocr_page_timeout_seconds,
+            ocr_max_pages=self.settings.ocr_max_pages,
+            ocr_max_image_pixels=self.settings.ocr_max_image_pixels,
         )
 
     def _embed_stored_chunks(

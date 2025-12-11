@@ -15,6 +15,12 @@ def test_settings_use_local_defaults() -> None:
     assert settings.chunk_overlap_tokens == 40
     assert settings.parent_chunk_size_tokens == 900
     assert settings.chunk_token_encoding == "cl100k_base"
+    assert settings.ocr_provider == "tesseract"
+    assert settings.ocr_language == "eng"
+    assert settings.ocr_dpi == 300
+    assert settings.ocr_page_timeout_seconds == 30
+    assert settings.ocr_max_pages == 100
+    assert settings.ocr_max_image_pixels == 50_000_000
     assert settings.embedding_provider == "none"
     assert settings.embedding_model == "text-embedding-3-small"
     assert settings.embedding_dimensions == 512
@@ -40,6 +46,12 @@ def test_settings_read_environment_values() -> None:
             "AMA_CHUNK_OVERLAP_TOKENS": "30",
             "AMA_PARENT_CHUNK_SIZE_TOKENS": "720",
             "AMA_CHUNK_TOKEN_ENCODING": "cl100k_base",
+            "AMA_OCR_PROVIDER": "none",
+            "AMA_OCR_LANGUAGE": "eng+fra",
+            "AMA_OCR_DPI": "240",
+            "AMA_OCR_PAGE_TIMEOUT_SECONDS": "45",
+            "AMA_OCR_MAX_PAGES": "75",
+            "AMA_OCR_MAX_IMAGE_PIXELS": "25000000",
             "AMA_EMBEDDING_PROVIDER": "openai",
             "AMA_EMBEDDING_MODEL": "text-embedding-3-large",
             "AMA_EMBEDDING_DIMENSIONS": "1024",
@@ -63,6 +75,12 @@ def test_settings_read_environment_values() -> None:
     assert settings.chunk_overlap_tokens == 30
     assert settings.parent_chunk_size_tokens == 720
     assert settings.chunk_token_encoding == "cl100k_base"
+    assert settings.ocr_provider == "none"
+    assert settings.ocr_language == "eng+fra"
+    assert settings.ocr_dpi == 240
+    assert settings.ocr_page_timeout_seconds == 45
+    assert settings.ocr_max_pages == 75
+    assert settings.ocr_max_image_pixels == 25_000_000
     assert settings.embedding_provider == "openai"
     assert settings.embedding_model == "text-embedding-3-large"
     assert settings.embedding_dimensions == 1024
@@ -108,6 +126,26 @@ def test_settings_reject_unknown_log_level() -> None:
 )
 def test_settings_reject_invalid_chunk_limits(environment: dict[str, str]) -> None:
     with pytest.raises(ValueError, match="AMA_CHUNK"):
+        Settings.from_environment(environment)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"AMA_OCR_PROVIDER": "cloud"},
+        {"AMA_OCR_LANGUAGE": "eng;rm"},
+        {"AMA_OCR_DPI": "149"},
+        {"AMA_OCR_DPI": "601"},
+        {"AMA_OCR_PAGE_TIMEOUT_SECONDS": "0"},
+        {"AMA_OCR_PAGE_TIMEOUT_SECONDS": "301"},
+        {"AMA_OCR_MAX_PAGES": "0"},
+        {"AMA_OCR_MAX_IMAGE_PIXELS": "0"},
+    ],
+)
+def test_settings_reject_invalid_ocr_configuration(
+    environment: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError, match="AMA_OCR"):
         Settings.from_environment(environment)
 
 

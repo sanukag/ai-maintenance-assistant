@@ -1,9 +1,34 @@
 """Deterministic test doubles shared across integration tests."""
 
 from collections.abc import Sequence
+from pathlib import Path
 
 from maintenance_assistant.answering import GeneratedAnswer, GroundingSource
 from maintenance_assistant.embeddings import EmbeddingBatch
+
+
+class FixedOCRProvider:
+    """Return deterministic text while recording each rendered image request."""
+
+    name = "test-ocr"
+    version = "1.0"
+    available = True
+
+    def __init__(self, text: str = "Isolate the pump before maintenance.") -> None:
+        self.text = text
+        self.calls: list[tuple[Path, str, int, int]] = []
+
+    def extract_image(
+        self,
+        path: Path,
+        *,
+        language: str,
+        dpi: int,
+        timeout_seconds: int,
+    ) -> str:
+        assert path.is_file()
+        self.calls.append((path, language, dpi, timeout_seconds))
+        return self.text
 
 
 class KeywordEmbeddingProvider:

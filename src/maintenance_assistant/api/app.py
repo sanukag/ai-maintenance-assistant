@@ -25,9 +25,11 @@ from maintenance_assistant.ingestion import (
     IngestionErrorCode,
     LocalDocumentStore,
 )
+from maintenance_assistant.ocr import OCRProvider, create_ocr_provider
 
 _CONFIGURED_EMBEDDING_PROVIDER = object()
 _CONFIGURED_ANSWER_PROVIDER = object()
+_CONFIGURED_OCR_PROVIDER = object()
 
 
 def create_app(
@@ -35,6 +37,7 @@ def create_app(
     settings: Settings | None = None,
     embedding_provider: EmbeddingProvider | None | object = _CONFIGURED_EMBEDDING_PROVIDER,
     answer_provider: AnswerProvider | None | object = _CONFIGURED_ANSWER_PROVIDER,
+    ocr_provider: OCRProvider | None | object = _CONFIGURED_OCR_PROVIDER,
     store: LocalDocumentStore | None = None,
 ) -> FastAPI:
     """Create an API with production defaults or explicitly injected services."""
@@ -50,6 +53,11 @@ def create_app(
         if answer_provider is _CONFIGURED_ANSWER_PROVIDER
         else cast(AnswerProvider | None, answer_provider)
     )
+    configured_ocr_provider = (
+        create_ocr_provider(configured_settings)
+        if ocr_provider is _CONFIGURED_OCR_PROVIDER
+        else cast(OCRProvider | None, ocr_provider)
+    )
     application = FastAPI(
         title="AI Maintenance Assistant API",
         version="0.1.0",
@@ -63,6 +71,7 @@ def create_app(
         configured_embedding_provider,
         configured_answer_provider,
         store,
+        configured_ocr_provider,
     )
     application.include_router(router)
 
@@ -110,6 +119,10 @@ def _ingestion_status(code: IngestionErrorCode) -> int:
         return 413
     if code is IngestionErrorCode.EMBEDDING_FAILED:
         return 502
+    if code is IngestionErrorCode.OCR_UNAVAILABLE:
+        return 503
+    if code is IngestionErrorCode.OCR_TIMED_OUT:
+        return 504
     if code is IngestionErrorCode.STORAGE_FAILED:
         return 500
     return 422

@@ -22,6 +22,9 @@ validate file and type
 extract text and source metadata
       |
       v
+recognise textless pages locally when required
+      |
+      v
 normalise extracted content
       |
       v
@@ -75,7 +78,7 @@ a stable local refusal with no citations.
 
 ## Initial constraints
 
-- PDF, plain-text and Markdown files are the intended initial formats.
+- PDF, PNG/JPEG image, plain-text and Markdown files are supported.
 - The default maximum document size is 25 MB and can be configured.
 - Source files are stored locally with metadata and chunks in SQLite.
 - Embeddings are an explicit opt-in because chunk text leaves the local machine.
@@ -87,8 +90,8 @@ a stable local refusal with no citations.
 - Exact duplicates are detected with a SHA-256 content fingerprint.
 - Revision replacement, archiving and permanent deletion are enforced by the
   storage boundary rather than relying on interface filtering.
-- Scanned-PDF optical character recognition and additional formats are
-  deliberately outside the initial version.
+- Tesseract OCR is local, bounded per page and applied only where a digital text
+  layer is absent.
 
 ## Package boundaries
 
@@ -99,6 +102,8 @@ a stable local refusal with no citations.
   controlled source-file copies, vectors and schema migrations.
 - `maintenance_assistant.embeddings` owns the provider contract and real OpenAI
   Embeddings API implementation.
+- `maintenance_assistant.ocr` owns the local OCR contract and bounded Tesseract
+  process integration.
 - `maintenance_assistant.retrieval` combines local vector and SQLite full-text
   rankings with weighted reciprocal rank fusion.
 - `maintenance_assistant.answering` owns evidence labelling, the real OpenAI

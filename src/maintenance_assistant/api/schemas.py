@@ -36,6 +36,9 @@ class HealthResponse(BaseModel):
 
     status: str
     storage: str
+    ocr: str
+    ocr_engine: str | None
+    ocr_version: str | None
     embeddings: str
     embedding_model: str | None
     answers: str

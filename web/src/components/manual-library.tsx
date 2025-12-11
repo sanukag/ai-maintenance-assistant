@@ -63,8 +63,8 @@ export function ManualLibrary() {
   function chooseFile(selectedFile: File | undefined, replace = false) {
     if (!selectedFile) return;
     const extension = selectedFile.name.split(".").pop()?.toLowerCase();
-    if (!extension || !["pdf", "txt", "md"].includes(extension)) {
-      setMessage({ tone: "error", text: "Choose a PDF, text or Markdown file." });
+    if (!extension || !["pdf", "txt", "md", "png", "jpg", "jpeg"].includes(extension)) {
+      setMessage({ tone: "error", text: "Choose a PDF, image, text or Markdown file." });
       return;
     }
     if (replace) setReplacementFile(selectedFile);
@@ -199,9 +199,9 @@ export function ManualLibrary() {
 
       <section className="manual-overview-grid">
         <div className={`upload-panel ${dragging ? "upload-panel-dragging" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
-          <input ref={input} type="file" accept=".pdf,.txt,.md" onChange={onFileChange} hidden />
+          <input ref={input} type="file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg" onChange={onFileChange} hidden />
           <span className="upload-illustration"><Icon name="upload" /></span>
-          <div><p className="eyebrow">Add knowledge</p><h2>Drop a manual here</h2><p>or choose a PDF, text or Markdown file from your computer</p></div>
+          <div><p className="eyebrow">Add knowledge</p><h2>Drop a manual here</h2><p>or choose a PDF, image, text or Markdown file from your computer</p></div>
           {file ? (
             <div className="selected-file"><span className="file-type">{file.name.split(".").pop()?.toUpperCase()}</span><span><strong>{file.name}</strong><small>{formatFileSize(file.size)}</small></span><button type="button" aria-label="Remove selected file" onClick={() => setFile(null)}><Icon name="close" /></button></div>
           ) : <button className="secondary-button" type="button" onClick={() => input.current?.click()}>Choose a file</button>}
@@ -256,7 +256,7 @@ export function ManualLibrary() {
 
             {selected.lifecycle_status === "current" && !pendingAction && (
               <div className="manual-actions-grid">
-                <article><span><Icon name="refresh" /></span><div><h3>Install a newer revision</h3><p>The current copy is retained as superseded and excluded from answers.</p><input ref={replacementInput} type="file" accept=".pdf,.txt,.md" hidden onChange={(event) => chooseFile(event.target.files?.[0], true)} />{replacementFile ? <div className="replacement-choice"><strong>{replacementFile.name}</strong><button type="button" onClick={() => setReplacementFile(null)}><Icon name="close" /></button></div> : <button type="button" className="text-action" onClick={() => replacementInput.current?.click()}>Choose replacement</button>}{replacementFile && <button type="button" className="primary-button compact-button" onClick={replaceManual} disabled={working}>{working ? "Installing revision" : `Install as revision ${selected.revision + 1}`}</button>}</div></article>
+                <article><span><Icon name="refresh" /></span><div><h3>Install a newer revision</h3><p>The current copy is retained as superseded and excluded from answers.</p><input ref={replacementInput} type="file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg" hidden onChange={(event) => chooseFile(event.target.files?.[0], true)} />{replacementFile ? <div className="replacement-choice"><strong>{replacementFile.name}</strong><button type="button" onClick={() => setReplacementFile(null)}><Icon name="close" /></button></div> : <button type="button" className="text-action" onClick={() => replacementInput.current?.click()}>Choose replacement</button>}{replacementFile && <button type="button" className="primary-button compact-button" onClick={replaceManual} disabled={working}>{working ? "Installing revision" : `Install as revision ${selected.revision + 1}`}</button>}</div></article>
                 <article><span><Icon name="spark" /></span><div><h3>Refresh search index</h3><p>Regenerate vectors using the embedding model currently configured.</p><button type="button" className="text-action" onClick={reindexManual} disabled={working}>Re-index manual</button></div></article>
               </div>
             )}

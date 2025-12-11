@@ -121,4 +121,16 @@ describe("ManualLibrary", () => {
       expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     ));
   });
+
+  it("accepts a scanned image manual", async () => {
+    const { container } = render(<ManualLibrary />);
+    await screen.findByText("Pump manual");
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["scan"], "panel-procedure.png", { type: "image/png" });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    expect(screen.getByText("panel-procedure.png")).toBeInTheDocument();
+    expect(screen.getByText("PNG")).toBeInTheDocument();
+  });
 });

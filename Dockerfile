@@ -10,7 +10,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN groupadd --gid 10001 ama \
+RUN apt-get update \
+    && apt-get install --no-install-recommends --yes \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 ama \
     && useradd --uid 10001 --gid ama --create-home --shell /usr/sbin/nologin ama
 
 COPY pyproject.toml README.md ./

@@ -10,6 +10,7 @@ from maintenance_assistant.ingestion import (
     IngestionErrorCode,
     validate_document,
 )
+from tests.ingestion.pdf_factory import write_scanned_image
 
 
 def test_validate_document_fingerprints_supported_file(tmp_path: Path) -> None:
@@ -60,3 +61,33 @@ def test_validate_document_enforces_size_limit(tmp_path: Path) -> None:
         validate_document(path, Settings(max_document_size_mb=1))
 
     assert captured.value.code is IngestionErrorCode.FILE_TOO_LARGE
+
+
+@pytest.mark.parametrize(("suffix", "image_format"), [(".png", "PNG"), (".jpg", "JPEG")])
+def test_validate_document_accepts_scanned_images(
+    tmp_path: Path,
+    suffix: str,
+    image_format: str,
+) -> None:
+    path = tmp_path / f"scan{suffix}"
+    write_scanned_image(path, "Pump procedure", image_format=image_format)
+
+    document = validate_document(path, Settings())
+
+    assert document.format is DocumentFormat.IMAGE
+
+
+def test_validate_document_rejects_disguised_or_oversized_images(
+    tmp_path: Path,
+) -> None:
+    disguised = tmp_path / "manual.png"
+    disguised.write_bytes(b"not an image")
+    with pytest.raises(IngestionError) as invalid:
+        validate_document(disguised, Settings())
+    assert invalid.value.code is IngestionErrorCode.INVALID_DOCUMENT
+
+    large = tmp_path / "large.png"
+    write_scanned_image(large, "Pump procedure")
+    with pytest.raises(IngestionError) as oversized:
+        validate_document(large, Settings(ocr_max_image_pixels=100))
+    assert oversized.value.code is IngestionErrorCode.FILE_TOO_LARGE
