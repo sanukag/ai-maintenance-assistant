@@ -26,6 +26,9 @@ The project tests ingestion at three levels:
 - Retrieval-evaluation tests verify dataset validation, labelled passage
   matching, ranking metrics, score-threshold experiments, JSON reports and
   command-line quality gates using deterministic local vectors.
+- Hierarchical chunking tests verify exact offline token budgets, section parent
+  boundaries, child-to-parent persistence, legacy schema migration, atomic
+  re-indexing and evidence-context deduplication.
 
 Run the complete suite with:
 

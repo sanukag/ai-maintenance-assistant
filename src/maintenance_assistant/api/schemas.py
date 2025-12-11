@@ -13,6 +13,7 @@ from maintenance_assistant.ingestion import (
     ReindexResult,
     StoredChunk,
     StoredDocument,
+    StoredParentChunk,
     VectorSearchResult,
 )
 
@@ -205,6 +206,36 @@ class ChunkResponse(BaseModel):
         )
 
 
+class ParentContextResponse(BaseModel):
+    """A larger source section associated with a retrieved child chunk."""
+
+    id: str
+    sequence: int
+    text: str
+    character_count: int
+    token_count: int
+    location: ChunkLocationResponse
+
+    @classmethod
+    def from_parent(cls, parent: StoredParentChunk) -> ParentContextResponse:
+        """Build a response from a stored parent context section."""
+
+        return cls(
+            id=parent.id,
+            sequence=parent.sequence,
+            text=parent.text,
+            character_count=parent.character_count,
+            token_count=parent.token_count,
+            location=ChunkLocationResponse(
+                page_start=parent.location.page_start,
+                page_end=parent.location.page_end,
+                headings=list(parent.location.headings),
+                line_start=parent.location.line_start,
+                line_end=parent.location.line_end,
+            ),
+        )
+
+
 class SearchResultResponse(BaseModel):
     """One semantically ranked chunk and its document metadata."""
 
@@ -212,6 +243,7 @@ class SearchResultResponse(BaseModel):
     model: str
     document: DocumentResponse
     chunk: ChunkResponse
+    parent_context: ParentContextResponse | None
 
     @classmethod
     def from_result(cls, result: VectorSearchResult) -> SearchResultResponse:
@@ -222,6 +254,11 @@ class SearchResultResponse(BaseModel):
             model=result.model,
             document=DocumentResponse.from_document(result.document),
             chunk=ChunkResponse.from_chunk(result.chunk),
+            parent_context=(
+                ParentContextResponse.from_parent(result.parent)
+                if result.parent is not None
+                else None
+            ),
         )
 
 
@@ -257,6 +294,7 @@ class AnswerCitationResponse(BaseModel):
     document: DocumentResponse
     chunk_id: str
     chunk_sequence: int
+    parent_context_id: str | None
     excerpt: str
     page_start: int | None
     page_end: int | None
@@ -268,14 +306,16 @@ class AnswerCitationResponse(BaseModel):
     def from_citation(cls, citation: AnswerCitation) -> AnswerCitationResponse:
         """Build a public citation without leaking local storage details."""
 
-        location = citation.chunk.location
+        evidence = citation.parent or citation.chunk
+        location = evidence.location
         return cls(
             source_id=citation.source_id,
             score=citation.score,
             document=DocumentResponse.from_document(citation.document),
             chunk_id=citation.chunk.id,
             chunk_sequence=citation.chunk.sequence,
-            excerpt=citation.chunk.text,
+            parent_context_id=(citation.parent.id if citation.parent is not None else None),
+            excerpt=evidence.text,
             page_start=location.page_start,
             page_end=location.page_end,
             headings=list(location.headings),

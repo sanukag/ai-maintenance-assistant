@@ -10,6 +10,7 @@ from maintenance_assistant.ingestion import (
     SourceLocation,
     ValidatedDocument,
     chunk_document,
+    chunk_document_hierarchy,
 )
 from maintenance_assistant.ingestion.chunking import TiktokenCounter
 
@@ -153,3 +154,53 @@ def test_chunk_document_splits_one_oversized_source_word() -> None:
 
     assert [chunk.text for chunk in chunks] == ["abcd", "efgh", "ij"]
     assert all(chunk.token_count <= 4 for chunk in chunks)
+
+
+def test_hierarchy_keeps_small_children_within_section_parents() -> None:
+    document = _document(
+        NormalisedSegment(
+            "alpha bravo charlie delta",
+            SourceLocation(page_number=1, heading="Isolation"),
+        ),
+        NormalisedSegment(
+            "echo foxtrot golf",
+            SourceLocation(page_number=2, heading="Inspection"),
+        ),
+    )
+
+    hierarchy = chunk_document_hierarchy(
+        document,
+        child_size_tokens=12,
+        child_overlap_tokens=0,
+        parent_size_tokens=50,
+        token_counter=CharacterCounter(),
+    )
+
+    assert [parent.location.headings for parent in hierarchy.parents] == [
+        ("Isolation",),
+        ("Inspection",),
+    ]
+    assert hierarchy.parents[0].text == "alpha bravo charlie delta"
+    assert hierarchy.parents[1].text == "echo foxtrot golf"
+    assert [child.parent_sequence for child in hierarchy.children] == [0, 0, 0, 1, 1]
+    assert all(child.token_count <= 12 for child in hierarchy.children)
+    assert all(parent.token_count <= 50 for parent in hierarchy.parents)
+
+
+@pytest.mark.parametrize(
+    ("child_size", "overlap", "parent_size"),
+    [(20, 0, 19), (0, 0, 20), (20, 20, 40), (20, -1, 40)],
+)
+def test_hierarchy_rejects_invalid_limits(
+    child_size: int,
+    overlap: int,
+    parent_size: int,
+) -> None:
+    with pytest.raises(ValueError):
+        chunk_document_hierarchy(
+            _document(),
+            child_size_tokens=child_size,
+            child_overlap_tokens=overlap,
+            parent_size_tokens=parent_size,
+            token_counter=CharacterCounter(),
+        )

@@ -108,6 +108,26 @@ class PreparedChunk:
     character_count: int
     location: ChunkLocation
     token_count: int | None = None
+    parent_sequence: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedParentChunk:
+    """A larger section of source context containing retrieval children."""
+
+    sequence: int
+    text: str
+    character_count: int
+    token_count: int
+    location: ChunkLocation
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedChunkHierarchy:
+    """Parent context and child retrieval chunks prepared together."""
+
+    parents: tuple[PreparedParentChunk, ...]
+    children: tuple[PreparedChunk, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +173,20 @@ class StoredChunk:
     character_count: int
     location: ChunkLocation
     token_count: int | None = None
+    parent_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StoredParentChunk:
+    """A persisted section used to expand retrieved child context."""
+
+    id: str
+    document_id: str
+    sequence: int
+    text: str
+    character_count: int
+    token_count: int
+    location: ChunkLocation
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,6 +208,7 @@ class VectorSearchResult:
     model: str
     chunk: StoredChunk
     document: StoredDocument
+    parent: StoredParentChunk | None = None
 
 
 @dataclass(frozen=True, slots=True)

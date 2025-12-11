@@ -39,8 +39,9 @@ Do not commit an API key to Git or place it in `.env.example`.
 
 For a new document with embedding enabled:
 
-1. The normal ingestion stages create traceable chunks.
-2. The provider creates one vector per chunk.
+1. The normal ingestion stages create traceable parent sections and smaller
+   child chunks.
+2. The provider creates one vector per child chunk.
 3. The pipeline verifies the response count, model, dimensions and finite
    values.
 4. The document, chunks and vectors are committed to SQLite together.
@@ -80,7 +81,14 @@ The search path:
 1. Creates an embedding for the query with the configured provider.
 2. Loads local vectors with the same model and dimensions.
 3. Calculates cosine similarity locally.
-4. Returns the highest-scoring chunks with filename and source location.
+4. Returns the highest-scoring children with filename, source location and their
+   larger parent context.
+
+The child remains the precise retrieval anchor. Grounded answering deduplicates
+children belonging to the same parent and sends the larger parent section as
+evidence, giving the model procedural context without making search chunks less
+focused. Legacy chunks without a parent remain searchable and use their own text
+as context until the manual is re-indexed.
 
 Optional arguments:
 

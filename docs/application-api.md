@@ -97,7 +97,7 @@ curl http://127.0.0.1:8000/documents/<document-id>/revisions
 
 Only current manuals contribute to search and grounded answers. Archive a
 retained copy with `POST /documents/<id>/archive`. Regenerate all of a manual's
-vectors with the active embedding provider using
+the token-aware child hierarchy and vectors with the active embedding provider using
 `POST /documents/<id>/reindex`.
 
 Permanent deletion uses `DELETE /documents/<id>` and removes the managed source
@@ -114,7 +114,7 @@ curl -X POST http://127.0.0.1:8000/search \
 
 Add `document_id` to restrict results to one stored document. Each result
 contains its cosine-similarity score, embedding model, safe document metadata,
-chunk text and available page, heading or line location. Search returns HTTP
+child chunk, larger `parent_context` and available source location. Search returns HTTP
 `503` with the `embeddings_disabled` code when no provider is configured.
 
 ## Ask a grounded question
@@ -126,9 +126,9 @@ curl -X POST http://127.0.0.1:8000/answers \
 ```
 
 Add `document_id` to restrict the evidence to one stored document. The API
-embeds the question, retrieves up to `max_sources` local chunks, labels them
-`S1`, `S2` and so on, and asks the configured answer model to use only that
-evidence. A successful response has this shape:
+embeds the question, ranks local child chunks, deduplicates shared parents and
+labels up to `max_sources` contexts `S1`, `S2` and so on. The configured answer
+model may use only those contexts. A successful response has this shape:
 
 ```json
 {
@@ -142,6 +142,7 @@ evidence. A successful response has this shape:
       "document": {"id": "...", "original_filename": "pump.pdf"},
       "chunk_id": "...",
       "chunk_sequence": 3,
+      "parent_context_id": "...",
       "excerpt": "Disconnect and lock out the electrical supply...",
       "page_start": 8,
       "page_end": 8,
@@ -158,7 +159,7 @@ evidence. A successful response has this shape:
 The example shortens the nested document metadata for readability; the real
 response includes the same safe metadata returned by the document routes. The
 answer service verifies that inline markers and structured citation IDs match
-retrieved chunks before returning them. Insufficient evidence returns HTTP `200`
+selected evidence before returning them. Insufficient evidence returns HTTP `200`
 with `answerable: false`, a stable explanation, no citations and no invented
 procedure. Provider failures or unverifiable output return HTTP `502`.
 

@@ -15,6 +15,8 @@ from maintenance_assistant.ingestion.models import (
     ChunkLocation,
     NormalisedDocument,
     PreparedChunk,
+    PreparedChunkHierarchy,
+    PreparedParentChunk,
     SourceLocation,
 )
 
@@ -98,13 +100,87 @@ def chunk_document(
         )
     counter = token_counter or TiktokenCounter()
     units = tuple(_iter_units(document, chunk_size_tokens, counter))
-    chunks: list[PreparedChunk] = []
+    groups = _group_units(units, chunk_size_tokens, overlap_tokens, counter)
+    return tuple(
+        _prepare_chunk(sequence, group, counter)
+        for sequence, group in enumerate(groups)
+    )
+
+
+def chunk_document_hierarchy(
+    document: NormalisedDocument,
+    *,
+    child_size_tokens: int = 300,
+    child_overlap_tokens: int = 40,
+    parent_size_tokens: int = 900,
+    token_counter: TokenCounter | None = None,
+) -> PreparedChunkHierarchy:
+    """Create small retrieval children within larger section-aligned parents."""
+
+    if parent_size_tokens < child_size_tokens:
+        raise ValueError("parent_size_tokens must not be smaller than child_size_tokens")
+    counter = token_counter or TiktokenCounter()
+    if child_size_tokens < 1:
+        raise ValueError("child_size_tokens must be greater than zero")
+    if child_overlap_tokens < 0 or child_overlap_tokens >= child_size_tokens:
+        raise ValueError(
+            "child_overlap_tokens must be zero or greater and smaller than "
+            "child_size_tokens"
+        )
+    units = tuple(_iter_units(document, parent_size_tokens, counter))
+    parent_groups = _group_parent_units(units, parent_size_tokens, counter)
+    parents: list[PreparedParentChunk] = []
+    children: list[PreparedChunk] = []
+    for parent_sequence, parent_units in enumerate(parent_groups):
+        prepared_parent = _prepare_chunk(parent_sequence, parent_units, counter)
+        parents.append(
+            PreparedParentChunk(
+                sequence=parent_sequence,
+                text=prepared_parent.text,
+                character_count=prepared_parent.character_count,
+                token_count=prepared_parent.token_count or 0,
+                location=prepared_parent.location,
+            )
+        )
+        child_units = tuple(
+            _Unit(text=part, location=unit.location)
+            for unit in parent_units
+            for part in _split_long_text(unit.text, child_size_tokens, counter)
+        )
+        child_groups = _group_units(
+            child_units,
+            child_size_tokens,
+            child_overlap_tokens,
+            counter,
+        )
+        for group in child_groups:
+            prepared_child = _prepare_chunk(len(children), group, counter)
+            children.append(
+                PreparedChunk(
+                    sequence=prepared_child.sequence,
+                    text=prepared_child.text,
+                    character_count=prepared_child.character_count,
+                    location=prepared_child.location,
+                    token_count=prepared_child.token_count,
+                    parent_sequence=parent_sequence,
+                )
+            )
+    return PreparedChunkHierarchy(parents=tuple(parents), children=tuple(children))
+
+
+def _group_units(
+    units: tuple[_Unit, ...] | list[_Unit],
+    chunk_size_tokens: int,
+    overlap_tokens: int,
+    counter: TokenCounter,
+) -> tuple[list[_Unit], ...]:
+    groups: list[list[_Unit]] = []
     current: list[_Unit] = []
 
     for unit in units:
         proposed = _join_units((*current, unit))
         if current and counter.count(proposed) > chunk_size_tokens:
-            chunks.append(_prepare_chunk(len(chunks), current, counter))
+            groups.append(current)
             current = _overlap_units(current, overlap_tokens, counter)
             while (
                 current
@@ -114,8 +190,42 @@ def chunk_document(
         current.append(unit)
 
     if current:
-        chunks.append(_prepare_chunk(len(chunks), current, counter))
-    return tuple(chunks)
+        groups.append(current)
+    return tuple(groups)
+
+
+def _group_parent_units(
+    units: tuple[_Unit, ...],
+    parent_size_tokens: int,
+    counter: TokenCounter,
+) -> tuple[list[_Unit], ...]:
+    if parent_size_tokens < 1:
+        raise ValueError("parent_size_tokens must be greater than zero")
+    groups: list[list[_Unit]] = []
+    current: list[_Unit] = []
+    current_heading: str | None = None
+    for unit in units:
+        heading = unit.location.heading
+        heading_changed = (
+            current
+            and heading is not None
+            and current_heading is not None
+            and heading != current_heading
+        )
+        size_exceeded = (
+            current
+            and counter.count(_join_units((*current, unit))) > parent_size_tokens
+        )
+        if heading_changed or size_exceeded:
+            groups.append(current)
+            current = []
+            current_heading = None
+        current.append(unit)
+        if heading is not None:
+            current_heading = heading
+    if current:
+        groups.append(current)
+    return tuple(groups)
 
 
 def _iter_units(

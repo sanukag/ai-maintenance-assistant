@@ -94,6 +94,7 @@ class RetrievalRunConfiguration:
     embedding_dimensions: int
     chunk_size_tokens: int
     chunk_overlap_tokens: int
+    parent_chunk_size_tokens: int
     chunk_token_encoding: str
 
 

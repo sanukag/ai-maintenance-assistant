@@ -23,6 +23,7 @@ class Settings:
     supported_file_types: tuple[str, ...] = DEFAULT_FILE_TYPES
     chunk_size_tokens: int = 300
     chunk_overlap_tokens: int = 40
+    parent_chunk_size_tokens: int = 900
     chunk_token_encoding: str = "cl100k_base"
     embedding_provider: str = "none"
     embedding_model: str = "text-embedding-3-small"
@@ -55,6 +56,15 @@ class Settings:
         if chunk_overlap >= chunk_size:
             raise ValueError(
                 "AMA_CHUNK_OVERLAP_TOKENS must be smaller than "
+                "AMA_CHUNK_SIZE_TOKENS"
+            )
+        parent_chunk_size = _positive_integer(
+            values.get("AMA_PARENT_CHUNK_SIZE_TOKENS", "900"),
+            "AMA_PARENT_CHUNK_SIZE_TOKENS",
+        )
+        if parent_chunk_size < chunk_size:
+            raise ValueError(
+                "AMA_PARENT_CHUNK_SIZE_TOKENS must not be smaller than "
                 "AMA_CHUNK_SIZE_TOKENS"
             )
         chunk_token_encoding = values.get(
@@ -113,6 +123,7 @@ class Settings:
             supported_file_types=file_types,
             chunk_size_tokens=chunk_size,
             chunk_overlap_tokens=chunk_overlap,
+            parent_chunk_size_tokens=parent_chunk_size,
             chunk_token_encoding=chunk_token_encoding,
             embedding_provider=embedding_provider,
             embedding_model=embedding_model,

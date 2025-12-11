@@ -20,9 +20,10 @@ calls the explicitly configured provider.
    with line information.
 5. Normalise Unicode, line endings, control characters and excessive blank
    lines without rewriting the document's meaning.
-6. Split text at structural boundaries using a configurable model-token budget
-   and word-aligned token overlap.
-7. When enabled, create one embedding for every prepared chunk.
+6. Split text into section-aligned parent context and smaller retrieval children
+   using configurable model-token budgets and word-aligned child overlap.
+7. When enabled, create one embedding for every child chunk; parents are stored
+   as context and are not embedded separately.
 8. Copy the original into controlled local storage and save its metadata,
    lifecycle state, chunks and vectors to SQLite in one transaction.
 
@@ -49,7 +50,7 @@ data/
 Generated document identifiers determine storage paths; user-provided
 filenames are retained only as metadata. The SQLite database contains document
 fingerprints, extraction details, creation times, lifecycle state, revision
-links, ordered chunks and any enabled embeddings.
+links, parent sections, ordered child chunks and any enabled embeddings.
 
 Each chunk records the source information available for its format:
 
@@ -70,6 +71,7 @@ source copies are removed.
 | `AMA_SUPPORTED_FILE_TYPES` | `.pdf,.txt,.md` | Accepted filename extensions |
 | `AMA_CHUNK_SIZE_TOKENS` | `300` | Maximum model tokens in a retrieval chunk |
 | `AMA_CHUNK_OVERLAP_TOKENS` | `40` | Maximum repeated model tokens between chunks |
+| `AMA_PARENT_CHUNK_SIZE_TOKENS` | `900` | Maximum model tokens in answer context |
 | `AMA_CHUNK_TOKEN_ENCODING` | `cl100k_base` | Token encoding used for chunk boundaries |
 | `AMA_EMBEDDING_PROVIDER` | `none` | `none` or the opt-in `openai` provider |
 | `AMA_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model identifier |
@@ -85,7 +87,8 @@ or API startup. Its SHA-256 checksum is checked whenever the table is loaded.
 Existing `.env` files should replace `AMA_CHUNK_SIZE_CHARACTERS` and
 `AMA_CHUNK_OVERLAP_CHARACTERS` with the token-based settings above. Existing
 stored chunks remain readable; their token count is reported as unknown until
-the document is processed with the new chunker.
+the document is re-indexed with the new chunker. Re-indexing reparses the stored
+source and replaces its hierarchy and vectors in one database transaction.
 
 The API key is read from the environment and is never stored in the database.
 

@@ -36,6 +36,7 @@ export type AnswerCitation = {
   document: DocumentRecord;
   chunk_id: string;
   chunk_sequence: number;
+  parent_context_id: string | null;
   excerpt: string;
   page_start: number | null;
   page_end: number | null;

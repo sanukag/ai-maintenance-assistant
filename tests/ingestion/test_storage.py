@@ -19,6 +19,7 @@ from maintenance_assistant.ingestion import (
     LocalDocumentStore,
     PreparedChunk,
     PreparedEmbedding,
+    PreparedParentChunk,
     SourceLocation,
     ValidatedDocument,
 )
@@ -63,6 +64,19 @@ def _embedding(
     )
 
 
+def _parent(
+    sequence: int = 0,
+    text: str = "Check pressure safely.",
+) -> PreparedParentChunk:
+    return PreparedParentChunk(
+        sequence=sequence,
+        text=text,
+        character_count=len(text),
+        token_count=len(text.split()),
+        location=ChunkLocation(headings=("Checks",), line_start=1, line_end=2),
+    )
+
+
 def test_store_saves_source_document_and_chunks(tmp_path: Path) -> None:
     source = tmp_path / "source" / "manual.txt"
     source.parent.mkdir()
@@ -80,6 +94,81 @@ def test_store_saves_source_document_and_chunks(tmp_path: Path) -> None:
     assert chunks[0].text == "Check pressure."
     assert chunks[0].token_count == 2
     assert chunks[0].location.headings == ("Checks",)
+
+
+def test_store_saves_parent_context_and_returns_it_with_search(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Check pressure safely.", encoding="utf-8")
+    store = LocalDocumentStore(tmp_path / "data")
+    child = _chunk(text="Check pressure.")
+    child = PreparedChunk(
+        sequence=child.sequence,
+        text=child.text,
+        character_count=child.character_count,
+        location=child.location,
+        token_count=child.token_count,
+        parent_sequence=0,
+    )
+
+    stored = store.save(
+        _document(source),
+        [child],
+        [_embedding(0, (1.0, 0.0))],
+        parents=[_parent()],
+    )
+
+    parents = store.list_parent_chunks(stored.id)
+    chunks = store.list_chunks(stored.id)
+    assert len(parents) == 1
+    assert parents[0].text == "Check pressure safely."
+    assert store.get_parent_chunk(parents[0].id) == parents[0]
+    assert chunks[0].parent_id == parents[0].id
+    result = store.search_vectors((1.0, 0.0), model="test-embedding", limit=1)[0]
+    assert result.chunk.id == chunks[0].id
+    assert result.parent == parents[0]
+
+
+@pytest.mark.parametrize(
+    ("parents", "children"),
+    [
+        (
+            [_parent()],
+            [PreparedChunk(0, "Child", 5, ChunkLocation(), 1, None)],
+        ),
+        (
+            [],
+            [PreparedChunk(0, "Child", 5, ChunkLocation(), 1, 3)],
+        ),
+        (
+            [_parent(), _parent()],
+            [PreparedChunk(0, "Child", 5, ChunkLocation(), 1, 0)],
+        ),
+        (
+            [_parent(0), _parent(1)],
+            [PreparedChunk(0, "Child", 5, ChunkLocation(), 1, 0)],
+        ),
+        (
+            [_parent()],
+            [PreparedChunk(0, "Child", 4, ChunkLocation(), 1, 0)],
+        ),
+    ],
+)
+def test_store_rejects_invalid_parent_hierarchy(
+    tmp_path: Path,
+    parents: list[PreparedParentChunk],
+    children: list[PreparedChunk],
+) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Child", encoding="utf-8")
+
+    with pytest.raises(IngestionError, match="parent|Parent|metadata"):
+        LocalDocumentStore(tmp_path / "data").save(
+            _document(source),
+            children,
+            parents=parents,
+        )
 
 
 def test_store_finds_and_rejects_duplicate_content(tmp_path: Path) -> None:
@@ -235,7 +324,7 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
         ).fetchone()
     finally:
         connection.close()
-    assert version == 4
+    assert version == 5
     assert embedding_table == ("embeddings",)
     store = LocalDocumentStore(data_directory)
     migrated = store.get_document("existing-document")
@@ -246,6 +335,8 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
     migrated_chunk = store.list_chunks("existing-document")[0]
     assert migrated_chunk.text == "Existing procedure"
     assert migrated_chunk.token_count is None
+    assert migrated_chunk.parent_id is None
+    assert store.list_parent_chunks("existing-document") == ()
 
 
 def test_store_saves_vectors_with_new_document(tmp_path: Path) -> None:
@@ -321,6 +412,7 @@ def test_store_ranks_vectors_by_cosine_similarity(tmp_path: Path) -> None:
     ]
     assert results[0].score == pytest.approx(1.0)
     assert results[0].document.id == stored.id
+    assert all(result.parent is None for result in results)
 
 
 def test_store_replaces_current_manual_and_retains_revision_history(

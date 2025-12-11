@@ -165,3 +165,71 @@ def test_service_does_not_store_document_for_invalid_embedding_batch(
     assert captured.value.code is IngestionErrorCode.EMBEDDING_FAILED
     content_hash = sha256(path.read_bytes()).hexdigest()
     assert LocalDocumentStore(settings.data_directory).find_by_hash(content_hash) is None
+
+
+def test_service_stores_section_parents_for_retrieval_children(tmp_path: Path) -> None:
+    path = tmp_path / "pump.md"
+    path.write_text(
+        "# Isolation\n\nStop and lock the pump.\n\n# Inspection\n\nCheck the seal.",
+        encoding="utf-8",
+    )
+    settings = Settings(
+        data_directory=tmp_path / "data",
+        chunk_size_tokens=5,
+        chunk_overlap_tokens=0,
+        parent_chunk_size_tokens=30,
+    )
+
+    result = IngestionService(settings).ingest(path)
+
+    store = LocalDocumentStore(settings.data_directory)
+    parents = store.list_parent_chunks(result.document.id)
+    children = store.list_chunks(result.document.id)
+    assert [parent.location.headings for parent in parents] == [
+        ("Isolation",),
+        ("Inspection",),
+    ]
+    assert all(child.parent_id is not None for child in children)
+    assert {child.parent_id for child in children} == {parent.id for parent in parents}
+
+
+def test_reindex_rebuilds_existing_chunks_with_the_active_hierarchy(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text(
+        "Pump isolation checks. Valve inspection checks. Motor rotation checks.",
+        encoding="utf-8",
+    )
+    initial_settings = Settings(
+        data_directory=tmp_path / "data",
+        chunk_size_tokens=30,
+        chunk_overlap_tokens=0,
+        parent_chunk_size_tokens=60,
+    )
+    first = IngestionService(
+        initial_settings,
+        embedding_provider=KeywordEmbeddingProvider(),
+    ).ingest(path)
+    assert first.document.chunk_count == 1
+    revised_settings = Settings(
+        data_directory=initial_settings.data_directory,
+        chunk_size_tokens=4,
+        chunk_overlap_tokens=0,
+        parent_chunk_size_tokens=12,
+    )
+
+    result = IngestionService(
+        revised_settings,
+        embedding_provider=KeywordEmbeddingProvider(),
+    ).reindex(first.document.id)
+
+    store = LocalDocumentStore(revised_settings.data_directory)
+    chunks = store.list_chunks(first.document.id)
+    assert result.document.id == first.document.id
+    assert result.document.chunk_count == len(chunks)
+    assert result.embedded_chunk_count == len(chunks)
+    assert len(chunks) > 1
+    assert all(chunk.token_count is not None and chunk.token_count <= 4 for chunk in chunks)
+    assert all(chunk.parent_id is not None for chunk in chunks)
+    assert store.list_parent_chunks(first.document.id)

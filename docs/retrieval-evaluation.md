@@ -133,6 +133,7 @@ For every experiment:
 4. Compare retrieval quality, unanswerable behaviour and latency.
 5. Review individual misses before accepting an aggregate improvement.
 
-The next intended experiment is token-aware parent-child chunking, followed by
-hybrid lexical and semantic retrieval. These changes should only replace the
-baseline when the evaluation demonstrates a material improvement.
+Token-aware parent-child chunking now provides the structural baseline. The next
+intended experiment is hybrid lexical and semantic retrieval with fused ranking.
+It should only replace dense-only ranking when the evaluation demonstrates a
+material improvement.

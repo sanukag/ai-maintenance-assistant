@@ -51,7 +51,7 @@ removes the staged directory only after commit.
 | `GET` | `/documents?lifecycle_status=current` | Filter the document list by state |
 | `GET` | `/documents/{id}/revisions` | Return retained revisions oldest first |
 | `POST` | `/documents/{id}/revisions` | Upload and install a replacement revision |
-| `POST` | `/documents/{id}/reindex` | Refresh vectors with the active provider |
+| `POST` | `/documents/{id}/reindex` | Rebuild chunks, parent context and vectors |
 | `POST` | `/documents/{id}/archive` | Exclude a retained manual from retrieval |
 | `DELETE` | `/documents/{id}` | Permanently remove the complete stored record |
 

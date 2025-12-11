@@ -91,6 +91,11 @@ def test_upload_browse_and_search_document(tmp_path: Path) -> None:
     assert search.status_code == 200
     assert search.json()["results"][0]["document"]["id"] == document_id
     assert search.json()["results"][0]["chunk"]["text"] == "Pump seal replacement."
+    assert search.json()["results"][0]["chunk"]["token_count"] == 5
+    parent = search.json()["results"][0]["parent_context"]
+    assert "Pump seal replacement." in parent["text"]
+    assert "Valve isolation procedure." in parent["text"]
+    assert parent["token_count"] > search.json()["results"][0]["chunk"]["token_count"]
     assert search.json()["results"][0]["score"] == pytest.approx(1.0)
     assert provider.calls[-1] == ("How do I repair the pump?",)
 
@@ -354,7 +359,9 @@ def test_answer_endpoint_returns_verified_traceable_citations(tmp_path: Path) ->
     assert citation["document"]["id"] == uploaded.json()["document"]["id"]
     assert citation["chunk_sequence"] == 0
     assert citation["chunk_id"]
-    assert citation["excerpt"] == "Pump isolation procedure."
+    assert citation["parent_context_id"]
+    assert "Pump isolation procedure." in citation["excerpt"]
+    assert "Valve inspection procedure." in citation["excerpt"]
     assert "stored_path" not in citation["document"]
     assert answers.calls[0][0] == "How do I maintain the pump?"
 

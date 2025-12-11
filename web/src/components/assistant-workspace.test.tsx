@@ -45,6 +45,7 @@ describe("AssistantWorkspace", () => {
             document,
             chunk_id: "chunk-1",
             chunk_sequence: 2,
+            parent_context_id: "parent-1",
             excerpt: "Disconnect and lock out the electrical supply.",
             page_start: 8,
             page_end: 8,

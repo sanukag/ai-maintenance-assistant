@@ -360,6 +360,7 @@ def test_evaluator_measures_hits_recall_rank_and_abstention(tmp_path: Path) -> N
             embedding_dimensions=3,
             chunk_size_tokens=20,
             chunk_overlap_tokens=0,
+            parent_chunk_size_tokens=60,
             chunk_token_encoding="cl100k_base",
         ),
     )
@@ -372,6 +373,7 @@ def test_evaluator_measures_hits_recall_rank_and_abstention(tmp_path: Path) -> N
         embedding_dimensions=3,
         chunk_size_tokens=20,
         chunk_overlap_tokens=0,
+        parent_chunk_size_tokens=60,
         chunk_token_encoding="cl100k_base",
     )
     assert report.summary.total_cases == 3
