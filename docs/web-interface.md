@@ -13,9 +13,11 @@ The interface has three focused areas:
   the exact evidence behind an answer.
 - **Manuals** provides drag-and-drop or file-picker upload, current and retained
   revision views, replacement, re-indexing, archiving and confirmed permanent
-  deletion.
+  deletion. It accepts digital or scanned PDFs, PNG/JPEG document images, text
+  and Markdown.
 - **Settings** shows service readiness, active provider models, local-data and
-  privacy boundaries, API documentation and developer runtime information.
+  privacy boundaries, local OCR availability, API documentation and developer
+  runtime information.
 
 The navigation becomes a drawer on narrow screens. Tables and answer sources
 collapse progressively so important actions remain usable on a workshop tablet

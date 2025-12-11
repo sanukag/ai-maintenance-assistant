@@ -8,10 +8,11 @@ from os import environ
 from pathlib import Path
 from typing import Mapping
 
-DEFAULT_FILE_TYPES = (".pdf", ".txt", ".md")
+DEFAULT_FILE_TYPES = (".pdf", ".txt", ".md", ".png", ".jpg", ".jpeg")
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 VALID_EMBEDDING_PROVIDERS = frozenset({"none", "openai"})
 VALID_ANSWER_PROVIDERS = frozenset({"none", "openai"})
+VALID_OCR_PROVIDERS = frozenset({"none", "tesseract"})
 VALID_TOKEN_ENCODINGS = frozenset({"cl100k_base"})
 
 
@@ -26,6 +27,12 @@ class Settings:
     chunk_overlap_tokens: int = 40
     parent_chunk_size_tokens: int = 900
     chunk_token_encoding: str = "cl100k_base"
+    ocr_provider: str = "tesseract"
+    ocr_language: str = "eng"
+    ocr_dpi: int = 300
+    ocr_page_timeout_seconds: int = 30
+    ocr_max_pages: int = 100
+    ocr_max_image_pixels: int = 50_000_000
     embedding_provider: str = "none"
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 512
@@ -80,6 +87,33 @@ class Settings:
         if chunk_token_encoding not in VALID_TOKEN_ENCODINGS:
             allowed = ", ".join(sorted(VALID_TOKEN_ENCODINGS))
             raise ValueError(f"AMA_CHUNK_TOKEN_ENCODING must be one of: {allowed}")
+        ocr_provider = values.get("AMA_OCR_PROVIDER", "tesseract").strip().lower()
+        if ocr_provider not in VALID_OCR_PROVIDERS:
+            allowed = ", ".join(sorted(VALID_OCR_PROVIDERS))
+            raise ValueError(f"AMA_OCR_PROVIDER must be one of: {allowed}")
+        ocr_language = values.get("AMA_OCR_LANGUAGE", "eng").strip()
+        if not ocr_language or not all(
+            character.isalnum() or character in {"_", "+", "-"}
+            for character in ocr_language
+        ):
+            raise ValueError("AMA_OCR_LANGUAGE contains unsupported characters")
+        ocr_dpi = _positive_integer(values.get("AMA_OCR_DPI", "300"), "AMA_OCR_DPI")
+        if not 150 <= ocr_dpi <= 600:
+            raise ValueError("AMA_OCR_DPI must be between 150 and 600")
+        ocr_page_timeout_seconds = _positive_integer(
+            values.get("AMA_OCR_PAGE_TIMEOUT_SECONDS", "30"),
+            "AMA_OCR_PAGE_TIMEOUT_SECONDS",
+        )
+        if ocr_page_timeout_seconds > 300:
+            raise ValueError("AMA_OCR_PAGE_TIMEOUT_SECONDS must not exceed 300")
+        ocr_max_pages = _positive_integer(
+            values.get("AMA_OCR_MAX_PAGES", "100"),
+            "AMA_OCR_MAX_PAGES",
+        )
+        ocr_max_image_pixels = _positive_integer(
+            values.get("AMA_OCR_MAX_IMAGE_PIXELS", "50000000"),
+            "AMA_OCR_MAX_IMAGE_PIXELS",
+        )
         embedding_provider = values.get("AMA_EMBEDDING_PROVIDER", "none").strip().lower()
         if embedding_provider not in VALID_EMBEDDING_PROVIDERS:
             allowed = ", ".join(sorted(VALID_EMBEDDING_PROVIDERS))
@@ -148,6 +182,12 @@ class Settings:
             chunk_overlap_tokens=chunk_overlap,
             parent_chunk_size_tokens=parent_chunk_size,
             chunk_token_encoding=chunk_token_encoding,
+            ocr_provider=ocr_provider,
+            ocr_language=ocr_language,
+            ocr_dpi=ocr_dpi,
+            ocr_page_timeout_seconds=ocr_page_timeout_seconds,
+            ocr_max_pages=ocr_max_pages,
+            ocr_max_image_pixels=ocr_max_image_pixels,
             embedding_provider=embedding_provider,
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,

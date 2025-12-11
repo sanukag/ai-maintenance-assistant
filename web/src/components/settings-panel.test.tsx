@@ -5,6 +5,9 @@ import { SettingsPanel } from "./settings-panel";
 const health = {
   status: "ok",
   storage: "ok",
+  ocr: "available" as const,
+  ocr_engine: "tesseract",
+  ocr_version: "5.5.0",
   embeddings: "enabled",
   embedding_model: "text-embedding-test",
   answers: "enabled",
@@ -21,6 +24,7 @@ describe("SettingsPanel", () => {
 
     expect(await screen.findByText("All local services operational")).toBeInTheDocument();
     expect(screen.getByText("text-embedding-test")).toBeInTheDocument();
+    expect(screen.getByText("tesseract 5.5.0")).toBeInTheDocument();
     expect(screen.getByText("gpt-answer-test")).toBeInTheDocument();
     expect(screen.getByText("Next.js 16 · App Router")).toBeInTheDocument();
     expect(screen.getByText("OPENAI_API_KEY")).toBeInTheDocument();

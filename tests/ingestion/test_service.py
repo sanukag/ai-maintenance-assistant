@@ -12,8 +12,8 @@ from maintenance_assistant.ingestion import (
     IngestionStatus,
     LocalDocumentStore,
 )
-from tests.ingestion.pdf_factory import write_text_pdf
-from tests.fakes import KeywordEmbeddingProvider
+from tests.ingestion.pdf_factory import write_scanned_pdf, write_text_pdf
+from tests.fakes import FixedOCRProvider, KeywordEmbeddingProvider
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -71,6 +71,27 @@ def test_service_ingests_real_pdf_with_page_traceability(tmp_path: Path) -> None
     assert chunks[0].text == "Isolate the pump before maintenance."
     assert chunks[0].location.page_start == 1
     assert chunks[0].location.page_end == 1
+
+
+def test_service_ingests_scanned_pdf_through_ocr_pipeline(tmp_path: Path) -> None:
+    path = tmp_path / "scanned-manual.pdf"
+    write_scanned_pdf(path, "ISOLATE PUMP BEFORE MAINTENANCE")
+    settings = _settings(tmp_path)
+    provider = FixedOCRProvider("ISOLATE PUMP BEFORE MAINTENANCE")
+
+    result = IngestionService(settings, ocr_provider=provider).ingest(path)
+
+    assert result.status is IngestionStatus.COMPLETED
+    assert result.document.extractor_name == "pypdf+test-ocr"
+    chunks = LocalDocumentStore(settings.data_directory).list_chunks(result.document.id)
+    assert chunks[0].text == "ISOLATE PUMP BEFORE MAINTENANCE"
+    assert chunks[0].location.page_start == 1
+
+
+def test_service_can_explicitly_disable_configured_ocr(tmp_path: Path) -> None:
+    service = IngestionService(_settings(tmp_path), ocr_provider=None)
+
+    assert service.ocr_provider is None
 
 
 def test_service_embeds_chunks_during_ingestion(tmp_path: Path) -> None:

@@ -14,6 +14,7 @@ class DocumentFormat(StrEnum):
     PDF = "pdf"
     TEXT = "text"
     MARKDOWN = "markdown"
+    IMAGE = "image"
 
 
 class IngestionStatus(StrEnum):

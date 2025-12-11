@@ -2,9 +2,8 @@
 
 ## Purpose
 
-The initial ingestion pipeline turns a local PDF, plain-text or Markdown file
-into locally stored, source-aware chunks. These chunks are intended to support
-retrieval and answer citation in later product sections.
+The ingestion pipeline turns a local PDF, scanned `PNG`/`JPEG` image,
+plain-text or Markdown file into locally stored, source-aware chunks.
 
 Validation, parsing, chunking and storage run locally. Embedding is optional and
 calls the explicitly configured provider.
@@ -16,8 +15,9 @@ calls the explicitly configured provider.
 2. Inspect the content for basic format mismatches and calculate its SHA-256
    fingerprint.
 3. Return the existing stored record if that fingerprint is already present.
-4. Extract PDF text by page, Markdown by heading section, or UTF-8 plain text
-   with line information.
+4. Extract digital PDF text by page. Render only pages without a text layer and
+   recognise them locally with Tesseract. Image documents use the same local
+   OCR engine; Markdown and UTF-8 text preserve their structural locations.
 5. Normalise Unicode, line endings, control characters and excessive blank
    lines without rewriting the document's meaning.
 6. Split text into section-aligned parent context and smaller retrieval children
@@ -55,6 +55,7 @@ links, parent sections, ordered child chunks and any enabled embeddings.
 Each chunk records the source information available for its format:
 
 - PDF page range
+- Scanned-image page number
 - Markdown headings and line range
 - Plain-text line range
 - Sequence, character count and model-token count for every format
@@ -68,7 +69,13 @@ source copies are removed.
 | --- | ---: | --- |
 | `AMA_DATA_DIRECTORY` | `./data` | Local database and source-file root |
 | `AMA_MAX_DOCUMENT_SIZE_MB` | `25` | Maximum accepted source size |
-| `AMA_SUPPORTED_FILE_TYPES` | `.pdf,.txt,.md` | Accepted filename extensions |
+| `AMA_SUPPORTED_FILE_TYPES` | `.pdf,.txt,.md,.png,.jpg,.jpeg` | Accepted filename extensions |
+| `AMA_OCR_PROVIDER` | `tesseract` | Local OCR engine, or `none` to disable OCR |
+| `AMA_OCR_LANGUAGE` | `eng` | Installed Tesseract language code(s) |
+| `AMA_OCR_DPI` | `300` | PDF page rendering resolution for OCR |
+| `AMA_OCR_PAGE_TIMEOUT_SECONDS` | `30` | Maximum recognition time per image/page |
+| `AMA_OCR_MAX_PAGES` | `100` | Maximum textless PDF pages recognised per request |
+| `AMA_OCR_MAX_IMAGE_PIXELS` | `50000000` | Maximum rendered or uploaded image pixels |
 | `AMA_CHUNK_SIZE_TOKENS` | `300` | Maximum model tokens in a retrieval chunk |
 | `AMA_CHUNK_OVERLAP_TOKENS` | `40` | Maximum repeated model tokens between chunks |
 | `AMA_PARENT_CHUNK_SIZE_TOKENS` | `900` | Maximum model tokens in answer context |
@@ -96,16 +103,19 @@ The API key is read from the environment and is never stored in the database.
 
 A successful request returns either `completed` or `already_exists`. Failures
 use stable codes such as `unsupported_type`, `file_too_large`,
-`invalid_document`, `encrypted_document`, `no_extractable_text` and
-`embedding_failed` and `storage_failed`.
+`invalid_document`, `encrypted_document`, `no_extractable_text`,
+`ocr_unavailable`, `ocr_timed_out`, `ocr_failed`, `embedding_failed` and
+`storage_failed`.
 
 The command-line interface prints safe messages. Underlying exceptions remain
 available to application logging without exposing document content.
 
 ## Initial limitations
 
-- Scanned PDFs are recognised as having no extractable text; optical character
-  recognition is not attempted.
+- Handwriting, complex diagrams and low-quality scans may not be recognised
+  accurately; workers must verify extracted procedures against the source.
+- Only installed Tesseract languages are available. The container includes
+  English language data by default.
 - Password-protected PDFs are rejected.
 - Text and Markdown documents must use UTF-8 encoding.
 - Exact duplicates are reused rather than installed as a new revision.

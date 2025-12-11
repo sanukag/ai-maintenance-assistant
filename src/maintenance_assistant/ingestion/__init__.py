@@ -40,6 +40,7 @@ from maintenance_assistant.ingestion.normalisation import normalise_document
 from maintenance_assistant.ingestion.service import IngestionService
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
 from maintenance_assistant.ingestion.validation import validate_document
+from maintenance_assistant.ocr import OCRProvider, TesseractOCRProvider
 
 __all__ = [
     "ChunkLocation",
@@ -58,6 +59,7 @@ __all__ = [
     "LexicalSearchResult",
     "NormalisedDocument",
     "NormalisedSegment",
+    "OCRProvider",
     "PreparedChunk",
     "PreparedChunkHierarchy",
     "PreparedEmbedding",
@@ -68,6 +70,7 @@ __all__ = [
     "StoredDocument",
     "StoredEmbedding",
     "StoredParentChunk",
+    "TesseractOCRProvider",
     "ValidatedDocument",
     "VectorSearchResult",
     "chunk_document",

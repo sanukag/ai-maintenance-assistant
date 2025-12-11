@@ -37,7 +37,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="ama-ingest",
         description="Ingest a maintenance document into local storage.",
     )
-    parser.add_argument("document", type=Path, help="path to a PDF, text or Markdown file")
+    parser.add_argument(
+        "document",
+        type=Path,
+        help="path to a PDF, scanned image, text or Markdown file",
+    )
     arguments = parser.parse_args(argv)
 
     try:

@@ -13,6 +13,8 @@ from uuid import uuid4
 
 import pytest
 
+from tests.ingestion.pdf_factory import write_scanned_pdf
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOCKER_AVAILABLE = shutil.which("docker") is not None
 RUN_CONTAINER_TESTS = os.environ.get("AMA_RUN_CONTAINER_TESTS") == "1"
@@ -29,6 +31,8 @@ def test_compose_configuration_is_valid() -> None:
     assert "no-new-privileges:true" in api["security_opt"]
     assert api["environment"]["AMA_DATA_DIRECTORY"] == "/app/data"
     assert api["environment"]["AMA_ANSWER_PROVIDER"] in {"none", "openai"}
+    assert api["environment"]["AMA_OCR_PROVIDER"] in {"none", "tesseract"}
+    assert int(api["environment"]["AMA_OCR_DPI"]) >= 150
     assert int(api["environment"]["AMA_ANSWER_MAX_OUTPUT_TOKENS"]) > 0
     assert api["ports"] == [
         {
@@ -67,7 +71,7 @@ def test_compose_configuration_is_valid() -> None:
     not DOCKER_AVAILABLE or not RUN_CONTAINER_TESTS,
     reason="Docker and AMA_RUN_CONTAINER_TESTS=1 are required",
 )
-def test_container_runs_as_non_root_and_preserves_documents() -> None:
+def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> None:
     project = f"ama-test-{uuid4().hex[:8]}"
     port = _available_port()
     web_port = _available_port()
@@ -96,7 +100,10 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
         )
         base_url = f"http://127.0.0.1:{port}"
         web_url = f"http://127.0.0.1:{web_port}"
-        assert _json_request(f"{base_url}/health")["status"] == "ok"
+        health = _json_request(f"{base_url}/health")
+        assert health["status"] == "ok"
+        assert health["ocr"] == "available"
+        assert health["ocr_engine"] == "tesseract"
         assert "Ask your manuals" in _text_request(web_url)
         assert _json_request(f"{web_url}/api/backend/health")["status"] == "ok"
 
@@ -121,6 +128,22 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
         )
         assert web_user.stdout.strip() == "10001"
 
+        scanned_path = tmp_path / "scanned-procedure.pdf"
+        write_scanned_pdf(
+            scanned_path,
+            "PUMP ISOLATION PROCEDURE\nClose valve V1 before maintenance",
+        )
+        scanned = _upload_binary_document(
+            base_url,
+            filename="scanned-procedure.pdf",
+            content=scanned_path.read_bytes(),
+            content_type="application/pdf",
+        )
+        assert scanned["document"]["extractor_name"].startswith("pypdf+tesseract")
+        assert scanned["document"]["page_count"] == 1
+        assert scanned["document"]["chunk_count"] >= 1
+        scanned_document_id = scanned["document"]["id"]
+
         ingested = _upload_text_document(
             base_url,
             filename="manual-v1.txt",
@@ -141,10 +164,12 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
         assert [item["id"] for item in documents["items"]] == [
             current_document_id,
             first_document_id,
+            scanned_document_id,
         ]
         assert [item["lifecycle_status"] for item in documents["items"]] == [
             "current",
             "superseded",
+            "current",
         ]
         deleted = Request(
             f"{web_url}/api/backend/documents/{first_document_id}",
@@ -163,7 +188,7 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
         current = _json_request(
             f"{base_url}/documents?lifecycle_status=current"
         )
-        assert current["items"] == []
+        assert [item["id"] for item in current["items"]] == [scanned_document_id]
     finally:
         _compose(
             *compose,
@@ -229,6 +254,29 @@ def _upload_text_document(
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
         "Content-Type: text/plain\r\n\r\n"
+    ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
+    request = Request(
+        f"{base_url}{path}",
+        data=body,
+        method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    return _json_request(request.full_url, request)
+
+
+def _upload_binary_document(
+    base_url: str,
+    *,
+    filename: str,
+    content: bytes,
+    content_type: str,
+    path: str = "/documents",
+) -> dict[str, object]:
+    boundary = f"ama-{uuid4().hex}"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n"
     ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
     request = Request(
         f"{base_url}{path}",

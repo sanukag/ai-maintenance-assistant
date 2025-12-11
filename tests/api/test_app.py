@@ -10,7 +10,8 @@ from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.routes import _safe_filename
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion import IngestionErrorCode
-from tests.fakes import FixedAnswerProvider, KeywordEmbeddingProvider
+from tests.fakes import FixedAnswerProvider, FixedOCRProvider, KeywordEmbeddingProvider
+from tests.ingestion.pdf_factory import write_scanned_image
 
 
 def _settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -25,8 +26,9 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
 
 def test_health_reports_local_services(tmp_path: Path) -> None:
     application = create_app(
-        settings=_settings(tmp_path),
+        settings=_settings(tmp_path, ocr_provider="none"),
         embedding_provider=None,
+        ocr_provider=None,
     )
 
     with TestClient(application) as client:
@@ -36,12 +38,40 @@ def test_health_reports_local_services(tmp_path: Path) -> None:
     assert response.json() == {
         "status": "ok",
         "storage": "ok",
+        "ocr": "disabled",
+        "ocr_engine": None,
+        "ocr_version": None,
         "embeddings": "disabled",
         "embedding_model": None,
         "answers": "disabled",
         "answer_model": None,
     }
     assert (tmp_path / "data" / "maintenance-assistant.db").is_file()
+
+
+def test_upload_scanned_image_reports_local_ocr_metadata(tmp_path: Path) -> None:
+    image = tmp_path / "scan.png"
+    write_scanned_image(image, "CHECK MOTOR ROTATION")
+    ocr = FixedOCRProvider("CHECK MOTOR ROTATION")
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=None,
+        ocr_provider=ocr,
+    )
+
+    with TestClient(application) as client:
+        health = client.get("/health")
+        uploaded = client.post(
+            "/documents",
+            files={"file": ("scan.png", image.read_bytes(), "image/png")},
+        )
+
+    assert health.json()["ocr"] == "available"
+    assert health.json()["ocr_engine"] == "test-ocr"
+    assert uploaded.status_code == 201
+    assert uploaded.json()["document"]["format"] == "image"
+    assert uploaded.json()["document"]["extractor_name"] == "test-ocr"
+    assert uploaded.json()["document"]["chunk_count"] == 1
 
 
 def test_upload_browse_and_search_document(tmp_path: Path) -> None:
@@ -431,6 +461,9 @@ def test_safe_filename_requires_a_real_name(filename: str | None) -> None:
         (IngestionErrorCode.FILE_NOT_FOUND, 404),
         (IngestionErrorCode.UNSUPPORTED_TYPE, 415),
         (IngestionErrorCode.FILE_TOO_LARGE, 413),
+        (IngestionErrorCode.OCR_UNAVAILABLE, 503),
+        (IngestionErrorCode.OCR_TIMED_OUT, 504),
+        (IngestionErrorCode.OCR_FAILED, 422),
         (IngestionErrorCode.EMBEDDING_FAILED, 502),
         (IngestionErrorCode.STORAGE_FAILED, 500),
         (IngestionErrorCode.INVALID_DOCUMENT, 422),

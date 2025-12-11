@@ -1,6 +1,9 @@
 export type Health = {
   status: string;
   storage: string;
+  ocr: "available" | "unavailable" | "disabled";
+  ocr_engine: string | null;
+  ocr_version: string | null;
   embeddings: "enabled" | "disabled";
   embedding_model: string | null;
   answers: "enabled" | "disabled";
@@ -10,7 +13,7 @@ export type Health = {
 export type DocumentRecord = {
   id: string;
   original_filename: string;
-  format: "pdf" | "text" | "markdown";
+  format: "pdf" | "text" | "markdown" | "image";
   size_bytes: number;
   title: string;
   page_count: number | null;

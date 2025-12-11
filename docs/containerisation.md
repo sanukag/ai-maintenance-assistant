@@ -5,6 +5,9 @@ interface without changing ingestion, embedding or storage behaviour. Docker
 Compose provides their local network, runtime configuration and persistent data
 volume.
 
+The API image also installs Tesseract with English language data. OCR remains
+fully local and is used only for PDF pages without text and for image manuals.
+
 ## Start the application
 
 From the repository root, run:
@@ -74,6 +77,10 @@ docker compose up --build --detach --wait
 
 Do not add a real key to `.env.example`, the Dockerfile or the image. Compose
 passes the key at runtime; it is not required while building the image.
+
+Set `AMA_OCR_LANGUAGE` to additional installed Tesseract language codes joined
+with `+`. Additional language packages must also be added to the API image;
+English (`eng`) is the included default.
 
 `AMA_DATA_DIRECTORY` is fixed to `/app/data` by Compose because that path is
 backed by the persistent volume. The local non-container command still uses

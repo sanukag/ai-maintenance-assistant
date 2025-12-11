@@ -32,8 +32,8 @@ lifetime of the process, so restart the API after changing them.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | Check local storage and report embedding availability |
-| `POST` | `/documents` | Upload and ingest one PDF, text or Markdown document |
+| `GET` | `/health` | Check storage, OCR and provider availability |
+| `POST` | `/documents` | Upload and ingest one PDF, image, text or Markdown document |
 | `GET` | `/documents` | List metadata with pagination and lifecycle filtering |
 | `GET` | `/documents/{document_id}` | Retrieve one document's metadata |
 | `GET` | `/documents/{document_id}/revisions` | List retained revision history |
@@ -60,6 +60,11 @@ when `AMA_MAX_DOCUMENT_SIZE_MB` is exceeded. It sanitises the supplied filename
 before passing the temporary file into the normal validation, extraction,
 chunking, embedding and storage workflow. The temporary copy is removed after
 the request; the ingestion store retains its own managed original.
+
+Scanned PDF pages and `PNG`/`JPEG` images are recognised with the configured
+local Tesseract engine. OCR dependency failures return HTTP `503`, per-page
+timeouts return HTTP `504`, and invalid or unrecognisable scans use stable
+ingestion error codes.
 
 A new document returns HTTP `201` and `status: completed`. Submitting identical
 content returns HTTP `200`, `status: already_exists` and the existing document

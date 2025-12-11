@@ -5,6 +5,8 @@ from __future__ import annotations
 from hashlib import sha256
 from pathlib import Path
 
+from PIL import Image, UnidentifiedImageError
+
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion.errors import IngestionError, IngestionErrorCode
 from maintenance_assistant.ingestion.models import DocumentFormat, ValidatedDocument
@@ -13,6 +15,9 @@ _FORMAT_BY_SUFFIX = {
     ".pdf": DocumentFormat.PDF,
     ".txt": DocumentFormat.TEXT,
     ".md": DocumentFormat.MARKDOWN,
+    ".png": DocumentFormat.IMAGE,
+    ".jpg": DocumentFormat.IMAGE,
+    ".jpeg": DocumentFormat.IMAGE,
 }
 _READ_SIZE = 64 * 1024
 
@@ -63,7 +68,9 @@ def validate_document(path: Path, settings: Settings) -> ValidatedDocument:
             IngestionErrorCode.INVALID_DOCUMENT,
             "File has a PDF extension but does not contain a PDF document",
         )
-    if document_format is not DocumentFormat.PDF and b"\x00" in first_bytes:
+    if document_format is DocumentFormat.IMAGE:
+        _validate_image(candidate, suffix, settings.ocr_max_image_pixels)
+    if document_format in {DocumentFormat.TEXT, DocumentFormat.MARKDOWN} and b"\x00" in first_bytes:
         raise IngestionError(
             IngestionErrorCode.INVALID_DOCUMENT,
             "Text document contains binary data",
@@ -76,6 +83,31 @@ def validate_document(path: Path, settings: Settings) -> ValidatedDocument:
         size_bytes=size_bytes,
         content_hash=content_hash,
     )
+
+
+def _validate_image(path: Path, suffix: str, maximum_pixels: int) -> None:
+    expected_format = "PNG" if suffix == ".png" else "JPEG"
+    try:
+        with Image.open(path) as image:
+            if image.format != expected_format:
+                raise IngestionError(
+                    IngestionErrorCode.INVALID_DOCUMENT,
+                    f"File has a {suffix} extension but contains another image format",
+                )
+            width, height = image.size
+            if width * height > maximum_pixels:
+                raise IngestionError(
+                    IngestionErrorCode.FILE_TOO_LARGE,
+                    "Document image exceeds the configured pixel limit",
+                )
+            image.verify()
+    except IngestionError:
+        raise
+    except (OSError, UnidentifiedImageError) as error:
+        raise IngestionError(
+            IngestionErrorCode.INVALID_DOCUMENT,
+            "Document image is invalid or unreadable",
+        ) from error
 
 
 def _fingerprint(path: Path) -> tuple[str, bytes]:

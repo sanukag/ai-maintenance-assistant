@@ -22,6 +22,9 @@ const document = {
 const health = {
   status: "ok",
   storage: "ok",
+  ocr: "available" as const,
+  ocr_engine: "tesseract",
+  ocr_version: "5.5.0",
   embeddings: "enabled",
   embedding_model: "test-embedding",
   answers: "enabled",

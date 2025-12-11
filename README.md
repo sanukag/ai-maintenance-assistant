@@ -11,7 +11,12 @@ without developer tools.
 
 ## Development setup
 
-The project requires Python 3.12 or later.
+The project requires Python 3.12 or later. Non-container OCR also requires the
+local Tesseract executable and English language data.
+
+On macOS, install it with `brew install tesseract`. On Debian or Ubuntu, use
+`sudo apt-get install tesseract-ocr tesseract-ocr-eng`. The Docker image already
+includes both the engine and its English language data.
 
 ```bash
 python3 -m venv .venv
@@ -50,7 +55,8 @@ The initial document-ingestion design is described in
 
 ## Ingest a document
 
-After installing the project, ingest a local PDF, text or Markdown document:
+After installing the project, ingest a local PDF, scanned image, text or
+Markdown document:
 
 ```bash
 ama-ingest /path/to/maintenance-manual.pdf
@@ -62,8 +68,10 @@ the same content is submitted again, the existing document is returned rather
 than stored twice.
 
 The command reports a stable error code and a concise explanation when a
-document cannot be ingested. Scanned PDFs requiring optical character
-recognition and password-protected PDFs are not supported yet.
+document cannot be ingested. PDF pages without an embedded text layer and
+`PNG`/`JPEG` document images are recognised locally with Tesseract. Digital PDF
+pages retain their existing text, including within mixed digital/scanned PDFs.
+Password-protected PDFs remain unsupported.
 
 The Manuals page retains revision history while ensuring only current manuals
 contribute to search and answers. Workers can replace, archive, re-index or

@@ -6,8 +6,11 @@ The project tests ingestion at three levels:
   configuration and storage rollback behaviour.
 - Integration tests pass real temporary files through SQLite and controlled
   local file storage.
-- End-to-end tests ingest text, Markdown and a generated real PDF through the
-  same service used by the command-line interface.
+- End-to-end tests ingest text, Markdown, a generated digital PDF and a rendered
+  image-only PDF through the command-line service path.
+- OCR tests cover image signatures, pixel/page limits, PDFium rendering,
+  language and timeout forwarding, engine failures and locally recognised image
+  documents.
 - Provider-boundary tests verify OpenAI request batching, input ordering, API
   failures, dimensions and non-finite vectors without making paid API calls.
 - Retrieval tests cover schema-version migration, float storage, missing-vector
@@ -79,10 +82,11 @@ AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
 ```
 
 It builds both images, waits for the API and web health checks, confirms both
-processes use the non-root UID, verifies the internal API proxy, installs a real
-replacement revision, restarts the API, checks volume persistence and exercises
-archive and deletion through the web proxy. The isolated test Compose project,
-images and volume are removed in cleanup.
+processes use the non-root UID, verifies the internal API proxy, recognises a
+real image-only PDF with containerised Tesseract, installs a replacement
+revision, restarts the API, checks volume persistence and exercises archive and
+deletion through the web proxy. The isolated test Compose project, images and
+volume are removed in cleanup.
 
 ## Continuous integration
 

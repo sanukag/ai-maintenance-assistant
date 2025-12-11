@@ -10,6 +10,7 @@ from maintenance_assistant.answering import AnswerProvider, GroundedAnswerServic
 from maintenance_assistant.config import Settings
 from maintenance_assistant.embeddings import EmbeddingProvider
 from maintenance_assistant.ingestion import IngestionService, LocalDocumentStore
+from maintenance_assistant.ocr import OCRProvider
 from maintenance_assistant.retrieval import HybridSearchService
 
 
@@ -20,6 +21,7 @@ class ApiServices:
     settings: Settings
     store: LocalDocumentStore
     ingestion: IngestionService
+    ocr_provider: OCRProvider | None
     search: HybridSearchService | None
     embedding_provider: EmbeddingProvider | None
     answers: GroundedAnswerService | None
@@ -31,6 +33,7 @@ def build_services(
     embedding_provider: EmbeddingProvider | None,
     answer_provider: AnswerProvider | None,
     store: LocalDocumentStore | None = None,
+    ocr_provider: OCRProvider | None = None,
 ) -> ApiServices:
     """Wire API-facing services to one store and provider configuration."""
 
@@ -54,7 +57,9 @@ def build_services(
             settings,
             store=configured_store,
             embedding_provider=embedding_provider,
+            ocr_provider=ocr_provider,
         ),
+        ocr_provider=ocr_provider,
         search=search,
         embedding_provider=embedding_provider,
         answers=GroundedAnswerService(search, answer_provider)

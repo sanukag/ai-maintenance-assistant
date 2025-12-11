@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
@@ -29,3 +30,24 @@ def write_text_pdf(path: Path, text: str) -> None:
     page[NameObject("/Contents")] = writer._add_object(content)
     with path.open("wb") as output:
         writer.write(output)
+
+
+def write_scanned_image(path: Path, text: str, *, image_format: str = "PNG") -> None:
+    """Write a high-contrast document scan suitable for real OCR tests."""
+
+    image = Image.new("RGB", (1654, 2339), "white")
+    drawing = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=54)
+    drawing.multiline_text((130, 220), text, fill="black", font=font, spacing=28)
+    image.save(path, format=image_format, dpi=(150, 150))
+    image.close()
+
+
+def write_scanned_pdf(path: Path, text: str) -> None:
+    """Write a one-page image-only PDF with no embedded text layer."""
+
+    image_path = path.with_suffix(".scan.png")
+    write_scanned_image(image_path, text)
+    with Image.open(image_path) as image:
+        image.save(path, format="PDF", resolution=150)
+    image_path.unlink()
