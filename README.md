@@ -69,7 +69,7 @@ The Manuals page retains revision history while ensuring only current manuals
 contribute to search and answers. Workers can replace, archive, re-index or
 permanently delete a manual through explicit lifecycle controls.
 
-### Enable embeddings and semantic search
+### Enable embeddings and hybrid search
 
 Embeddings are disabled by default. To embed new or previously ingested
 documents with OpenAI:
@@ -88,6 +88,12 @@ Search the embedded chunks with:
 ```bash
 ama-search "How do I isolate the pump before maintenance?"
 ```
+
+Search combines semantic vector similarity with SQLite full-text matches, so
+natural-language questions and exact identifiers such as fault codes can both
+influence the result order. The candidate count, RRF constant and method
+weights are configurable through the `AMA_RETRIEVAL_*` settings in
+`.env.example`.
 
 Retrieval changes can be measured against labelled source passages with the
 local evaluation harness. A fictional starter corpus is included so the

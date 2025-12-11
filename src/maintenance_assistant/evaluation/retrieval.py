@@ -96,6 +96,10 @@ class RetrievalRunConfiguration:
     chunk_overlap_tokens: int
     parent_chunk_size_tokens: int
     chunk_token_encoding: str
+    retrieval_candidate_limit: int
+    retrieval_rrf_k: int
+    retrieval_semantic_weight: float
+    retrieval_text_weight: float
 
 
 @dataclass(frozen=True, slots=True)

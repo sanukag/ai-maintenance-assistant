@@ -10,7 +10,7 @@ from maintenance_assistant.answering import AnswerProvider, GroundedAnswerServic
 from maintenance_assistant.config import Settings
 from maintenance_assistant.embeddings import EmbeddingProvider
 from maintenance_assistant.ingestion import IngestionService, LocalDocumentStore
-from maintenance_assistant.retrieval import VectorSearchService
+from maintenance_assistant.retrieval import HybridSearchService
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,7 +20,7 @@ class ApiServices:
     settings: Settings
     store: LocalDocumentStore
     ingestion: IngestionService
-    search: VectorSearchService | None
+    search: HybridSearchService | None
     embedding_provider: EmbeddingProvider | None
     answers: GroundedAnswerService | None
     answer_provider: AnswerProvider | None
@@ -36,7 +36,14 @@ def build_services(
 
     configured_store = store or LocalDocumentStore(settings.data_directory)
     search = (
-        VectorSearchService(configured_store, embedding_provider)
+        HybridSearchService(
+            configured_store,
+            embedding_provider,
+            candidate_limit=settings.retrieval_candidate_limit,
+            rrf_k=settings.retrieval_rrf_k,
+            semantic_weight=settings.retrieval_semantic_weight,
+            text_weight=settings.retrieval_text_weight,
+        )
         if embedding_provider is not None
         else None
     )

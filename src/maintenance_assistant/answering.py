@@ -18,7 +18,7 @@ from maintenance_assistant.ingestion import (
     StoredParentChunk,
     VectorSearchResult,
 )
-from maintenance_assistant.retrieval import VectorSearchService
+from maintenance_assistant.retrieval import HybridSearchService, VectorSearchService
 
 _CITATION_PATTERN = re.compile(r"\[(S\d+)\]")
 _INSUFFICIENT_EVIDENCE = (
@@ -188,7 +188,7 @@ class GroundedAnswerService:
 
     def __init__(
         self,
-        search: VectorSearchService,
+        search: VectorSearchService | HybridSearchService,
         provider: AnswerProvider,
     ) -> None:
         self.search = search

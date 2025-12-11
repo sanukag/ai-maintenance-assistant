@@ -10,11 +10,11 @@ The project tests ingestion at three levels:
   same service used by the command-line interface.
 - Provider-boundary tests verify OpenAI request batching, input ordering, API
   failures, dimensions and non-finite vectors without making paid API calls.
-- Vector tests cover schema-version migration, float storage, missing-vector
-  backfill, cosine ranking and semantic-search output.
+- Retrieval tests cover schema-version migration, float storage, missing-vector
+  backfill, cosine ranking, FTS5 indexing, exact-code matching and fused output.
 - API integration tests exercise health reporting, bounded multipart uploads,
   duplicate handling, document browsing, structured errors, OpenAPI generation
-  and semantic search through the real local services.
+  and hybrid search through the real local services.
 - Grounded-answer tests exercise evidence retrieval, source labelling, typed
   Responses API calls, insufficient-evidence handling and rejection of missing,
   duplicated, mismatched or invented citations.
@@ -29,6 +29,8 @@ The project tests ingestion at three levels:
 - Hierarchical chunking tests verify exact offline token budgets, section parent
   boundaries, child-to-parent persistence, legacy schema migration, atomic
   re-indexing and evidence-context deduplication.
+- Hybrid-retrieval tests verify weighted reciprocal rank fusion, semantic-only
+  and text-only modes, document filtering and lifecycle exclusion.
 
 Run the complete suite with:
 

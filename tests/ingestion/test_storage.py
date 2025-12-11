@@ -128,6 +128,10 @@ def test_store_saves_parent_context_and_returns_it_with_search(
     result = store.search_vectors((1.0, 0.0), model="test-embedding", limit=1)[0]
     assert result.chunk.id == chunks[0].id
     assert result.parent == parents[0]
+    text_result = store.search_text("pressure", limit=1)[0]
+    assert text_result.chunk.id == chunks[0].id
+    assert text_result.parent == parents[0]
+    assert text_result.score > 0
 
 
 @pytest.mark.parametrize(
@@ -324,7 +328,7 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
         ).fetchone()
     finally:
         connection.close()
-    assert version == 5
+    assert version == 6
     assert embedding_table == ("embeddings",)
     store = LocalDocumentStore(data_directory)
     migrated = store.get_document("existing-document")
@@ -337,6 +341,7 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
     assert migrated_chunk.token_count is None
     assert migrated_chunk.parent_id is None
     assert store.list_parent_chunks("existing-document") == ()
+    assert store.search_text("existing procedure")[0].chunk.id == "existing-chunk"
 
 
 def test_store_saves_vectors_with_new_document(tmp_path: Path) -> None:
@@ -415,6 +420,29 @@ def test_store_ranks_vectors_by_cosine_similarity(tmp_path: Path) -> None:
     assert all(result.parent is None for result in results)
 
 
+def test_store_safely_ranks_exact_fault_codes_with_full_text_search(
+    tmp_path: Path,
+) -> None:
+    store = LocalDocumentStore(tmp_path / "data")
+    fault_source = tmp_path / "compressor.txt"
+    fault_source.write_text("Fault T-07 indicates high temperature.", encoding="utf-8")
+    fault = store.save(
+        _document(fault_source),
+        [_chunk(text="Fault T-07 indicates high temperature.")],
+    )
+    other_source = tmp_path / "pump.txt"
+    other_source.write_text("Inspect the pump seal.", encoding="utf-8")
+    store.save(_document(other_source), [_chunk(text="Inspect the pump seal.")])
+
+    results = store.search_text("What does T-07 mean?", limit=5)
+
+    assert [result.document.id for result in results] == [fault.id]
+    assert store.search_text("???") == ()
+    assert store.search_text("T-07", document_id="missing") == ()
+    with pytest.raises(ValueError, match="limit"):
+        store.search_text("fault", limit=0)
+
+
 def test_store_replaces_current_manual_and_retains_revision_history(
     tmp_path: Path,
 ) -> None:
@@ -463,6 +491,7 @@ def test_store_archives_manual_and_excludes_its_vectors(tmp_path: Path) -> None:
 
     assert archived.lifecycle_status is DocumentLifecycleStatus.ARCHIVED
     assert store.search_vectors((1.0, 0.0), model="test-embedding") == ()
+    assert store.search_text("pump procedure") == ()
 
 
 def test_store_permanently_deletes_file_metadata_chunks_and_vectors(
@@ -483,6 +512,7 @@ def test_store_permanently_deletes_file_metadata_chunks_and_vectors(
     assert store.get_document(stored.id) is None
     assert store.list_chunks(stored.id) == ()
     assert store.list_embeddings(stored.id) == ()
+    assert store.search_text("pump procedure") == ()
     assert not stored_directory.exists()
 
 

@@ -19,6 +19,10 @@ def test_settings_use_local_defaults() -> None:
     assert settings.embedding_model == "text-embedding-3-small"
     assert settings.embedding_dimensions == 512
     assert settings.embedding_batch_size == 128
+    assert settings.retrieval_candidate_limit == 30
+    assert settings.retrieval_rrf_k == 60
+    assert settings.retrieval_semantic_weight == 1.0
+    assert settings.retrieval_text_weight == 1.0
     assert settings.answer_provider == "none"
     assert settings.answer_model == "gpt-5.6-terra"
     assert settings.answer_max_output_tokens == 1000
@@ -40,6 +44,10 @@ def test_settings_read_environment_values() -> None:
             "AMA_EMBEDDING_MODEL": "text-embedding-3-large",
             "AMA_EMBEDDING_DIMENSIONS": "1024",
             "AMA_EMBEDDING_BATCH_SIZE": "64",
+            "AMA_RETRIEVAL_CANDIDATE_LIMIT": "40",
+            "AMA_RETRIEVAL_RRF_K": "50",
+            "AMA_RETRIEVAL_SEMANTIC_WEIGHT": "1.5",
+            "AMA_RETRIEVAL_TEXT_WEIGHT": "0.75",
             "AMA_ANSWER_PROVIDER": "openai",
             "AMA_ANSWER_MODEL": "gpt-answer",
             "AMA_ANSWER_MAX_OUTPUT_TOKENS": "750",
@@ -59,6 +67,10 @@ def test_settings_read_environment_values() -> None:
     assert settings.embedding_model == "text-embedding-3-large"
     assert settings.embedding_dimensions == 1024
     assert settings.embedding_batch_size == 64
+    assert settings.retrieval_candidate_limit == 40
+    assert settings.retrieval_rrf_k == 50
+    assert settings.retrieval_semantic_weight == 1.5
+    assert settings.retrieval_text_weight == 0.75
     assert settings.answer_provider == "openai"
     assert settings.answer_model == "gpt-answer"
     assert settings.answer_max_output_tokens == 750
@@ -129,4 +141,25 @@ def test_settings_reject_invalid_answer_configuration(
     environment: dict[str, str],
 ) -> None:
     with pytest.raises(ValueError):
+        Settings.from_environment(environment)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"AMA_RETRIEVAL_CANDIDATE_LIMIT": "0"},
+        {"AMA_RETRIEVAL_RRF_K": "0"},
+        {"AMA_RETRIEVAL_SEMANTIC_WEIGHT": "-1"},
+        {"AMA_RETRIEVAL_TEXT_WEIGHT": "many"},
+        {"AMA_RETRIEVAL_TEXT_WEIGHT": "nan"},
+        {
+            "AMA_RETRIEVAL_SEMANTIC_WEIGHT": "0",
+            "AMA_RETRIEVAL_TEXT_WEIGHT": "0",
+        },
+    ],
+)
+def test_settings_reject_invalid_retrieval_configuration(
+    environment: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError, match="RETRIEVAL|retrieval"):
         Settings.from_environment(environment)

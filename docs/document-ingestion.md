@@ -110,8 +110,9 @@ available to application logging without exposing document content.
 - Text and Markdown documents must use UTF-8 encoding.
 - Exact duplicates are reused rather than installed as a new revision.
 - Ingestion runs synchronously; there is no background processing queue yet.
-- Local vector ranking loads matching vectors and calculates cosine similarity
-  in the application process; this is intended for an initial small corpus.
+- Local hybrid ranking calculates vector similarity in the application process
+  and exact-text ranking with SQLite FTS5; this is intended for an initial small
+  corpus.
 - Ingestion is intended for a local, single-user process in this version.
 
 These limitations keep the first implementation observable and testable while
