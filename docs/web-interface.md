@@ -11,8 +11,9 @@ The interface has three focused areas:
 - **Assistant** is the default workspace. Workers can ask a free-text question,
   optionally restrict it to one manual, use common-question starters and inspect
   the exact evidence behind an answer.
-- **Manuals** provides drag-and-drop or file-picker upload, clear processing
-  feedback, supported-format guidance and a library of indexed documents.
+- **Manuals** provides drag-and-drop or file-picker upload, current and retained
+  revision views, replacement, re-indexing, archiving and confirmed permanent
+  deletion.
 - **Settings** shows service readiness, active provider models, local-data and
   privacy boundaries, API documentation and developer runtime information.
 
@@ -70,6 +71,6 @@ when the API uses a different local address.
 ## Current boundary
 
 The interface is local and unauthenticated. It does not yet provide user roles,
-saved question history, feedback capture, streaming answers or manual deletion.
+saved question history, feedback capture or streaming answers.
 Settings deliberately reports configuration but does not edit provider values
 or accept API keys in the browser.

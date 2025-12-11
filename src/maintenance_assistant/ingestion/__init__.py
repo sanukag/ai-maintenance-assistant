@@ -1,6 +1,8 @@
 """Document-ingestion components."""
 
 from maintenance_assistant.ingestion.errors import (
+    DocumentLifecycleError,
+    DocumentLifecycleErrorCode,
     DuplicateDocumentError,
     IngestionError,
     IngestionErrorCode,
@@ -9,6 +11,7 @@ from maintenance_assistant.ingestion.chunking import chunk_document
 from maintenance_assistant.ingestion.extractors import extract_document
 from maintenance_assistant.ingestion.models import (
     ChunkLocation,
+    DocumentLifecycleStatus,
     DocumentFormat,
     ExtractedDocument,
     ExtractedSegment,
@@ -18,6 +21,7 @@ from maintenance_assistant.ingestion.models import (
     NormalisedSegment,
     PreparedChunk,
     PreparedEmbedding,
+    ReindexResult,
     SourceLocation,
     StoredChunk,
     StoredDocument,
@@ -32,7 +36,10 @@ from maintenance_assistant.ingestion.validation import validate_document
 
 __all__ = [
     "ChunkLocation",
+    "DocumentLifecycleStatus",
     "DocumentFormat",
+    "DocumentLifecycleError",
+    "DocumentLifecycleErrorCode",
     "DuplicateDocumentError",
     "ExtractedDocument",
     "ExtractedSegment",
@@ -45,6 +52,7 @@ __all__ = [
     "NormalisedSegment",
     "PreparedChunk",
     "PreparedEmbedding",
+    "ReindexResult",
     "SourceLocation",
     "StoredChunk",
     "StoredDocument",

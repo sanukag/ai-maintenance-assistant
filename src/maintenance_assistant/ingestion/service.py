@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion.chunking import chunk_document
 from maintenance_assistant.ingestion.errors import (
+    DocumentLifecycleError,
+    DocumentLifecycleErrorCode,
     DuplicateDocumentError,
     IngestionError,
     IngestionErrorCode,
@@ -19,6 +21,7 @@ from maintenance_assistant.ingestion.models import (
     IngestionStatus,
     PreparedChunk,
     PreparedEmbedding,
+    ReindexResult,
     StoredChunk,
     StoredDocument,
 )
@@ -73,6 +76,76 @@ class IngestionService:
             embedding_model=self.embedding_provider.model
             if self.embedding_provider
             else None,
+            embedding_input_tokens=input_tokens,
+        )
+
+    def ingest_revision(self, path: Path, document_id: str) -> IngestionResult:
+        """Ingest a new revision and supersede one current stored manual."""
+
+        previous = self.store.get_document(document_id)
+        if previous is None:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                "Document was not found",
+            )
+        if previous.lifecycle_status.value != "current":
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.REVISION_CONFLICT,
+                "Only a current manual can be replaced",
+            )
+
+        validated = validate_document(path, self.settings)
+        existing = self.store.find_by_hash(validated.content_hash)
+        if existing is not None:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.IDENTICAL_REVISION,
+                "The replacement is identical to a manual already in the library",
+            )
+        extracted = extract_document(validated)
+        normalised = normalise_document(extracted)
+        chunks = chunk_document(
+            normalised,
+            chunk_size=self.settings.chunk_size_characters,
+            overlap=self.settings.chunk_overlap_characters,
+        )
+        embeddings, input_tokens = self._embed_prepared_chunks(chunks)
+        stored = self.store.save(
+            extracted,
+            chunks,
+            embeddings,
+            supersedes_document_id=document_id,
+        )
+        return IngestionResult(
+            status=IngestionStatus.COMPLETED,
+            document=stored,
+            embedded_chunk_count=len(embeddings),
+            embedding_model=self.embedding_provider.model
+            if self.embedding_provider
+            else None,
+            embedding_input_tokens=input_tokens,
+        )
+
+    def reindex(self, document_id: str) -> ReindexResult:
+        """Regenerate every vector for a stored manual using the active provider."""
+
+        document = self.store.get_document(document_id)
+        if document is None:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                "Document was not found",
+            )
+        if self.embedding_provider is None:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.REVISION_CONFLICT,
+                "Re-indexing requires an enabled embedding provider",
+            )
+        chunks = self.store.list_chunks(document_id)
+        embeddings, input_tokens = self._embed_stored_chunks(chunks)
+        self.store.save_embeddings(document_id, embeddings)
+        return ReindexResult(
+            document=document,
+            embedded_chunk_count=len(embeddings),
+            embedding_model=self.embedding_provider.model,
             embedding_input_tokens=input_tokens,
         )
 

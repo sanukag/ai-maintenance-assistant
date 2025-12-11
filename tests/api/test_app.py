@@ -77,6 +77,9 @@ def test_upload_browse_and_search_document(tmp_path: Path) -> None:
     assert uploaded.json()["status"] == "completed"
     assert uploaded.json()["document"]["original_filename"] == "procedures.txt"
     assert uploaded.json()["document"]["chunk_count"] == 2
+    assert uploaded.json()["document"]["lifecycle_status"] == "current"
+    assert uploaded.json()["document"]["revision"] == 1
+    assert uploaded.json()["document"]["supersedes_document_id"] is None
     assert uploaded.json()["embeddings"] == {
         "chunk_count": 2,
         "model": "test-embedding",
@@ -202,9 +205,112 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
         "/health",
         "/documents",
         "/documents/{document_id}",
+        "/documents/{document_id}/archive",
+        "/documents/{document_id}/reindex",
+        "/documents/{document_id}/revisions",
         "/search",
         "/answers",
     }
+
+
+def test_manual_revision_archive_reindex_and_delete_workflow(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+    )
+
+    with TestClient(application) as client:
+        first = client.post(
+            "/documents",
+            files={"file": ("pump-v1.txt", b"Old pump procedure.", "text/plain")},
+        )
+        first_id = first.json()["document"]["id"]
+        replacement = client.post(
+            f"/documents/{first_id}/revisions",
+            files={
+                "file": (
+                    "pump-v2.txt",
+                    b"Updated pump isolation procedure.",
+                    "text/plain",
+                )
+            },
+        )
+        second_id = replacement.json()["document"]["id"]
+        history = client.get(f"/documents/{second_id}/revisions")
+        current = client.get(
+            "/documents", params={"lifecycle_status": "current"}
+        )
+        search = client.post("/search", json={"query": "pump", "limit": 5})
+        reindexed = client.post(f"/documents/{second_id}/reindex")
+        archived = client.post(f"/documents/{second_id}/archive")
+        archived_search = client.post(
+            "/search", json={"query": "pump", "limit": 5}
+        )
+        deleted = client.delete(f"/documents/{second_id}")
+        missing = client.get(f"/documents/{second_id}")
+
+    assert replacement.status_code == 201
+    assert replacement.json()["document"]["revision"] == 2
+    assert replacement.json()["document"]["supersedes_document_id"] == first_id
+    assert [item["lifecycle_status"] for item in history.json()["items"]] == [
+        "superseded",
+        "current",
+    ]
+    assert [item["id"] for item in current.json()["items"]] == [second_id]
+    assert {item["document"]["id"] for item in search.json()["results"]} == {
+        second_id
+    }
+    assert reindexed.json()["embeddings"]["chunk_count"] == replacement.json()[
+        "document"
+    ]["chunk_count"]
+    assert archived.json()["lifecycle_status"] == "archived"
+    assert archived_search.json()["results"] == []
+    assert deleted.status_code == 204
+    assert missing.status_code == 404
+
+
+def test_replacement_rejects_identical_or_non_current_manual(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+    )
+    file = ("pump.txt", b"Pump procedure.", "text/plain")
+
+    with TestClient(application) as client:
+        uploaded = client.post("/documents", files={"file": file})
+        document_id = uploaded.json()["document"]["id"]
+        identical = client.post(
+            f"/documents/{document_id}/revisions", files={"file": file}
+        )
+        client.post(f"/documents/{document_id}/archive")
+        archived = client.post(
+            f"/documents/{document_id}/revisions",
+            files={"file": ("pump-v2.txt", b"New pump procedure.", "text/plain")},
+        )
+
+    assert identical.status_code == 409
+    assert identical.json()["error"]["code"] == "identical_revision"
+    assert archived.status_code == 409
+    assert archived.json()["error"]["code"] == "revision_conflict"
+
+
+def test_reindex_requires_embedding_provider(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=None,
+    )
+
+    with TestClient(application) as client:
+        uploaded = client.post(
+            "/documents",
+            files={"file": ("pump.txt", b"Pump procedure.", "text/plain")},
+        )
+        response = client.post(
+            f"/documents/{uploaded.json()['document']['id']}/reindex"
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "embeddings_disabled"
 
 
 def test_answer_endpoint_returns_verified_traceable_citations(tmp_path: Path) -> None:

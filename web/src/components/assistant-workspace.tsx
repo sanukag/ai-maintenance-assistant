@@ -42,7 +42,7 @@ export function AssistantWorkspace() {
     let active = true;
     Promise.all([
       fetch("/api/backend/health", { cache: "no-store" }).then(readJson<Health>),
-      fetch("/api/backend/documents?limit=100", { cache: "no-store" }).then(readJson<DocumentList>),
+      fetch("/api/backend/documents?limit=100&lifecycle_status=current", { cache: "no-store" }).then(readJson<DocumentList>),
     ])
       .then(([serviceHealth, documentList]) => {
         if (!active) return;

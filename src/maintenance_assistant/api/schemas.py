@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from maintenance_assistant.answering import AnswerCitation, GroundedAnswer
 from maintenance_assistant.ingestion import (
+    DocumentLifecycleStatus,
     IngestionResult,
+    ReindexResult,
     StoredChunk,
     StoredDocument,
     VectorSearchResult,
@@ -52,6 +54,10 @@ class DocumentResponse(BaseModel):
     extractor_name: str
     extractor_version: str
     created_at: datetime
+    lifecycle_status: DocumentLifecycleStatus
+    revision: int
+    supersedes_document_id: str | None
+    lifecycle_updated_at: datetime
 
     @classmethod
     def from_document(cls, document: StoredDocument) -> DocumentResponse:
@@ -68,6 +74,10 @@ class DocumentResponse(BaseModel):
             extractor_name=document.extractor_name,
             extractor_version=document.extractor_version,
             created_at=document.created_at,
+            lifecycle_status=document.lifecycle_status,
+            revision=document.revision,
+            supersedes_document_id=document.supersedes_document_id,
+            lifecycle_updated_at=document.lifecycle_updated_at or document.created_at,
         )
 
 
@@ -107,6 +117,32 @@ class DocumentListResponse(BaseModel):
     items: list[DocumentResponse]
     limit: int
     offset: int
+
+
+class RevisionHistoryResponse(BaseModel):
+    """The ordered revision history for one manual family."""
+
+    items: list[DocumentResponse]
+
+
+class ReindexResponse(BaseModel):
+    """Embedding work completed when re-indexing a stored manual."""
+
+    document: DocumentResponse
+    embeddings: EmbeddingResponse
+
+    @classmethod
+    def from_result(cls, result: ReindexResult) -> ReindexResponse:
+        """Build a response from a complete re-indexing result."""
+
+        return cls(
+            document=DocumentResponse.from_document(result.document),
+            embeddings=EmbeddingResponse(
+                chunk_count=result.embedded_chunk_count,
+                model=result.embedding_model,
+                input_tokens=result.embedding_input_tokens,
+            ),
+        )
 
 
 class SearchRequest(BaseModel):

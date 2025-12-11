@@ -18,6 +18,10 @@ export type DocumentRecord = {
   extractor_name: string;
   extractor_version: string;
   created_at: string;
+  lifecycle_status: "current" | "superseded" | "archived";
+  revision: number;
+  supersedes_document_id: string | null;
+  lifecycle_updated_at: string;
 };
 
 export type DocumentList = {

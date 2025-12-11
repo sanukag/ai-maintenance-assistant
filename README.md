@@ -6,7 +6,8 @@ A local-first assistant for turning maintenance documents into useful,
 traceable knowledge.
 
 The application includes a worker-facing Next.js interface for asking grounded
-questions, adding manuals and checking system readiness without developer tools.
+questions, managing approved manual revisions and checking system readiness
+without developer tools.
 
 ## Development setup
 
@@ -63,6 +64,10 @@ than stored twice.
 The command reports a stable error code and a concise explanation when a
 document cannot be ingested. Scanned PDFs requiring optical character
 recognition and password-protected PDFs are not supported yet.
+
+The Manuals page retains revision history while ensuring only current manuals
+contribute to search and answers. Workers can replace, archive, re-index or
+permanently delete a manual through explicit lifecycle controls.
 
 ### Enable embeddings and semantic search
 
@@ -162,4 +167,5 @@ for the embedding and retrieval design. The HTTP routes and examples are in
 validation and current limitations are described in
 [`docs/grounded-answers.md`](docs/grounded-answers.md). See
 [`docs/web-interface.md`](docs/web-interface.md) for the worker experience and
-frontend architecture.
+frontend architecture, and [`docs/manual-lifecycle.md`](docs/manual-lifecycle.md)
+for revision, archive and deletion guarantees.

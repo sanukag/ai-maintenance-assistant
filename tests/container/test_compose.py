@@ -121,13 +121,49 @@ def test_container_runs_as_non_root_and_preserves_documents() -> None:
         )
         assert web_user.stdout.strip() == "10001"
 
-        ingested = _upload_text_document(base_url)
-        document_id = ingested["document"]["id"]
+        ingested = _upload_text_document(
+            base_url,
+            filename="manual-v1.txt",
+            content=b"Pump isolation procedure.",
+        )
+        first_document_id = ingested["document"]["id"]
+        replacement = _upload_text_document(
+            base_url,
+            path=f"/documents/{first_document_id}/revisions",
+            filename="manual-v2.txt",
+            content=b"Updated pump isolation procedure.",
+        )
+        current_document_id = replacement["document"]["id"]
 
         _compose(*compose, "restart", "api", environment=environment)
         _wait_until_healthy(base_url)
         documents = _json_request(f"{base_url}/documents")
-        assert [item["id"] for item in documents["items"]] == [document_id]
+        assert [item["id"] for item in documents["items"]] == [
+            current_document_id,
+            first_document_id,
+        ]
+        assert [item["lifecycle_status"] for item in documents["items"]] == [
+            "current",
+            "superseded",
+        ]
+        deleted = Request(
+            f"{web_url}/api/backend/documents/{first_document_id}",
+            method="DELETE",
+        )
+        with urlopen(deleted, timeout=5) as response:
+            assert response.status == 204
+        archived = Request(
+            f"{web_url}/api/backend/documents/{current_document_id}/archive",
+            data=b"",
+            method="POST",
+        )
+        assert _json_request(archived.full_url, archived)["lifecycle_status"] == (
+            "archived"
+        )
+        current = _json_request(
+            f"{base_url}/documents?lifecycle_status=current"
+        )
+        assert current["items"] == []
     finally:
         _compose(
             *compose,
@@ -181,16 +217,21 @@ def _text_request(url: str) -> str:
         return response.read().decode("utf-8")
 
 
-def _upload_text_document(base_url: str) -> dict[str, object]:
+def _upload_text_document(
+    base_url: str,
+    *,
+    filename: str,
+    content: bytes,
+    path: str = "/documents",
+) -> dict[str, object]:
     boundary = f"ama-{uuid4().hex}"
-    content = b"Pump isolation procedure."
     body = (
         f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="file"; filename="manual.txt"\r\n'
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
         "Content-Type: text/plain\r\n\r\n"
     ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
     request = Request(
-        f"{base_url}/documents",
+        f"{base_url}{path}",
         data=body,
         method="POST",
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},

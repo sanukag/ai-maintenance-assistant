@@ -34,8 +34,13 @@ lifetime of the process, so restart the API after changing them.
 | --- | --- | --- |
 | `GET` | `/health` | Check local storage and report embedding availability |
 | `POST` | `/documents` | Upload and ingest one PDF, text or Markdown document |
-| `GET` | `/documents` | List document metadata with `limit` and `offset` |
+| `GET` | `/documents` | List metadata with pagination and lifecycle filtering |
 | `GET` | `/documents/{document_id}` | Retrieve one document's metadata |
+| `GET` | `/documents/{document_id}/revisions` | List retained revision history |
+| `POST` | `/documents/{document_id}/revisions` | Install a replacement revision |
+| `POST` | `/documents/{document_id}/reindex` | Refresh vectors for one manual |
+| `POST` | `/documents/{document_id}/archive` | Exclude a retained manual from retrieval |
+| `DELETE` | `/documents/{document_id}` | Permanently remove a manual and its data |
 | `POST` | `/search` | Search embedded chunks and return source locations |
 | `POST` | `/answers` | Generate a grounded answer with verified citations |
 
@@ -65,10 +70,39 @@ backfills any missing vectors.
 
 ```bash
 curl "http://127.0.0.1:8000/documents?limit=20&offset=0"
+curl "http://127.0.0.1:8000/documents?lifecycle_status=current"
 curl http://127.0.0.1:8000/documents/<document-id>
 ```
 
-Documents are returned newest first. The maximum page size is 100.
+Documents are returned newest first. The maximum page size is 100. The optional
+`lifecycle_status` filter accepts `current`, `superseded` or `archived`.
+
+## Manage manual revisions
+
+Install a replacement by sending the same multipart `file` field to the current
+manual's revisions endpoint:
+
+```bash
+curl -F "file=@./manuals/pump-revision-2.pdf" \
+  http://127.0.0.1:8000/documents/<current-id>/revisions
+```
+
+The replacement receives the next revision number and becomes `current`; the
+previous record becomes `superseded` in the same transaction. Both source files
+and their extracted records remain available through:
+
+```bash
+curl http://127.0.0.1:8000/documents/<document-id>/revisions
+```
+
+Only current manuals contribute to search and grounded answers. Archive a
+retained copy with `POST /documents/<id>/archive`. Regenerate all of a manual's
+vectors with the active embedding provider using
+`POST /documents/<id>/reindex`.
+
+Permanent deletion uses `DELETE /documents/<id>` and removes the managed source
+file, metadata, chunks and vectors. The worker interface requires an explicit
+confirmation before sending this request.
 
 ## Search embedded chunks
 

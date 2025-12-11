@@ -19,6 +19,8 @@ from maintenance_assistant.api.services import build_services
 from maintenance_assistant.config import Settings
 from maintenance_assistant.embeddings import EmbeddingProvider, create_embedding_provider
 from maintenance_assistant.ingestion import (
+    DocumentLifecycleError,
+    DocumentLifecycleErrorCode,
     IngestionError,
     IngestionErrorCode,
     LocalDocumentStore,
@@ -75,6 +77,17 @@ def create_app(
             error.code.value,
             error.message,
         )
+
+    @application.exception_handler(DocumentLifecycleError)
+    async def handle_lifecycle_error(
+        _: Request, error: DocumentLifecycleError
+    ) -> JSONResponse:
+        status_code = (
+            404
+            if error.code is DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND
+            else 409
+        )
+        return _error_response(status_code, error.code.value, error.message)
 
     @application.exception_handler(AnsweringError)
     async def handle_answering_error(_: Request, error: AnsweringError) -> JSONResponse:

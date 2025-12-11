@@ -40,3 +40,20 @@ class DuplicateDocumentError(IngestionError):
             f"An identical document is already stored as {document_id}",
         )
         self.document_id = document_id
+
+
+class DocumentLifecycleErrorCode(StrEnum):
+    """Stable failures for manual revision and lifecycle operations."""
+
+    DOCUMENT_NOT_FOUND = "document_not_found"
+    REVISION_CONFLICT = "revision_conflict"
+    IDENTICAL_REVISION = "identical_revision"
+
+
+class DocumentLifecycleError(Exception):
+    """A safe failure raised when a lifecycle transition cannot be completed."""
+
+    def __init__(self, code: DocumentLifecycleErrorCode, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message

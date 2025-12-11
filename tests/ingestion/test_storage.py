@@ -7,6 +7,9 @@ import pytest
 
 from maintenance_assistant.ingestion import (
     ChunkLocation,
+    DocumentLifecycleError,
+    DocumentLifecycleErrorCode,
+    DocumentLifecycleStatus,
     DocumentFormat,
     DuplicateDocumentError,
     ExtractedDocument,
@@ -230,10 +233,14 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
         ).fetchone()
     finally:
         connection.close()
-    assert version == 2
+    assert version == 3
     assert embedding_table == ("embeddings",)
     store = LocalDocumentStore(data_directory)
-    assert store.get_document("existing-document").title == "Existing manual"
+    migrated = store.get_document("existing-document")
+    assert migrated.title == "Existing manual"
+    assert migrated.lifecycle_status is DocumentLifecycleStatus.CURRENT
+    assert migrated.revision == 1
+    assert migrated.lifecycle_updated_at == migrated.created_at
     assert store.list_chunks("existing-document")[0].text == "Existing procedure"
 
 
@@ -310,6 +317,97 @@ def test_store_ranks_vectors_by_cosine_similarity(tmp_path: Path) -> None:
     ]
     assert results[0].score == pytest.approx(1.0)
     assert results[0].document.id == stored.id
+
+
+def test_store_replaces_current_manual_and_retains_revision_history(
+    tmp_path: Path,
+) -> None:
+    store = LocalDocumentStore(tmp_path / "data")
+    first_source = tmp_path / "pump-v1.txt"
+    first_source.write_text("Old pump procedure.", encoding="utf-8")
+    first = store.save(
+        _document(first_source),
+        [_chunk(text="Old pump procedure.")],
+        [_embedding(0, (1.0, 0.0))],
+    )
+    second_source = tmp_path / "pump-v2.txt"
+    second_source.write_text("Updated pump procedure.", encoding="utf-8")
+
+    second = store.save(
+        _document(second_source),
+        [_chunk(text="Updated pump procedure.")],
+        [_embedding(0, (0.0, 1.0))],
+        supersedes_document_id=first.id,
+    )
+
+    previous = store.get_document(first.id)
+    assert previous.lifecycle_status is DocumentLifecycleStatus.SUPERSEDED
+    assert second.lifecycle_status is DocumentLifecycleStatus.CURRENT
+    assert second.revision == 2
+    assert second.supersedes_document_id == first.id
+    assert store.list_revision_history(second.id) == (previous, second)
+    assert store.list_documents(
+        lifecycle_status=DocumentLifecycleStatus.CURRENT
+    ) == (second,)
+    results = store.search_vectors((1.0, 0.0), model="test-embedding")
+    assert [result.document.id for result in results] == [second.id]
+
+
+def test_store_archives_manual_and_excludes_its_vectors(tmp_path: Path) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Pump procedure.", encoding="utf-8")
+    store = LocalDocumentStore(tmp_path / "data")
+    stored = store.save(
+        _document(source),
+        [_chunk(text="Pump procedure.")],
+        [_embedding(0, (1.0, 0.0))],
+    )
+
+    archived = store.archive_document(stored.id)
+
+    assert archived.lifecycle_status is DocumentLifecycleStatus.ARCHIVED
+    assert store.search_vectors((1.0, 0.0), model="test-embedding") == ()
+
+
+def test_store_permanently_deletes_file_metadata_chunks_and_vectors(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "manual.txt"
+    source.write_text("Pump procedure.", encoding="utf-8")
+    store = LocalDocumentStore(tmp_path / "data")
+    stored = store.save(
+        _document(source),
+        [_chunk(text="Pump procedure.")],
+        [_embedding(0, (1.0, 0.0))],
+    )
+    stored_directory = stored.stored_path.parent
+
+    store.delete_document(stored.id)
+
+    assert store.get_document(stored.id) is None
+    assert store.list_chunks(stored.id) == ()
+    assert store.list_embeddings(stored.id) == ()
+    assert not stored_directory.exists()
+
+
+def test_store_rejects_replacing_a_non_current_manual(tmp_path: Path) -> None:
+    store = LocalDocumentStore(tmp_path / "data")
+    first_source = tmp_path / "first.txt"
+    first_source.write_text("First procedure.", encoding="utf-8")
+    first = store.save(_document(first_source), [_chunk(text="First procedure.")])
+    store.archive_document(first.id)
+    second_source = tmp_path / "second.txt"
+    second_source.write_text("Second procedure.", encoding="utf-8")
+
+    with pytest.raises(DocumentLifecycleError) as captured:
+        store.save(
+            _document(second_source),
+            [_chunk(text="Second procedure.")],
+            supersedes_document_id=first.id,
+        )
+
+    assert captured.value.code is DocumentLifecycleErrorCode.REVISION_CONFLICT
+    assert store.find_by_hash(sha256(second_source.read_bytes()).hexdigest()) is None
 
 
 @pytest.mark.parametrize("vector", [(), (0.0, 0.0), (float("nan"), 1.0)])

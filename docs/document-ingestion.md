@@ -24,7 +24,7 @@ calls the explicitly configured provider.
    and word-aligned overlap.
 7. When enabled, create one embedding for every prepared chunk.
 8. Copy the original into controlled local storage and save its metadata,
-   chunks and vectors to SQLite in one transaction.
+   lifecycle state, chunks and vectors to SQLite in one transaction.
 
 The source copy is hashed again before storage. Ingestion stops if the document
 changed after validation.
@@ -48,8 +48,8 @@ data/
 
 Generated document identifiers determine storage paths; user-provided
 filenames are retained only as metadata. The SQLite database contains document
-fingerprints, extraction details, creation times, ordered chunks and any
-enabled embeddings.
+fingerprints, extraction details, creation times, lifecycle state, revision
+links, ordered chunks and any enabled embeddings.
 
 Each chunk records the source information available for its format:
 
@@ -98,8 +98,8 @@ available to application logging without exposing document content.
   recognition is not attempted.
 - Password-protected PDFs are rejected.
 - Text and Markdown documents must use UTF-8 encoding.
-- Exact duplicates are reused; document version relationships are not modelled.
-- There is no graphical upload interface or background queue yet.
+- Exact duplicates are reused rather than installed as a new revision.
+- Ingestion runs synchronously; there is no background processing queue yet.
 - Local vector ranking loads matching vectors and calculates cosine similarity
   in the application process; this is intended for an initial small corpus.
 - Ingestion is intended for a local, single-user process in this version.
