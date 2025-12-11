@@ -89,6 +89,17 @@ Search the embedded chunks with:
 ama-search "How do I isolate the pump before maintenance?"
 ```
 
+Retrieval changes can be measured against labelled source passages with the
+local evaluation harness. A fictional starter corpus is included so the
+workflow can be exercised without committing private manuals:
+
+```bash
+ama-evaluate-retrieval evals/retrieval-cases.json --limit 5
+```
+
+See [Retrieval evaluation](docs/retrieval-evaluation.md) for corpus setup,
+metrics, JSON reports and quality gates.
+
 The initial provider uses `text-embedding-3-small` with 512 dimensions. Both
 values are configurable. Search must use the same provider configuration used
 to create the stored vectors.

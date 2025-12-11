@@ -23,6 +23,9 @@ The project tests ingestion at three levels:
   library status and the developer settings page with deterministic responses.
 - Lifecycle tests verify the schema migration, atomic superseding, active-only
   retrieval, archive exclusion, cascading deletion and retained history.
+- Retrieval-evaluation tests verify dataset validation, labelled passage
+  matching, ranking metrics, score-threshold experiments, JSON reports and
+  command-line quality gates using deterministic local vectors.
 
 Run the complete suite with:
 
@@ -54,6 +57,11 @@ key. They also inject deterministic answer payloads, so CI never sends questions
 or chunks to an external model. A live-provider smoke test should be run
 deliberately with a project key before release because it sends content
 externally and incurs API usage.
+
+The separate [retrieval evaluation workflow](retrieval-evaluation.md) measures
+quality against labelled maintenance questions. Its committed starter corpus is
+synthetic; a production-quality gate should use a larger reviewed dataset kept
+within the appropriate privacy boundary.
 
 ## Container verification
 

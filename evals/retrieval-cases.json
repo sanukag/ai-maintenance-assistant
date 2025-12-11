@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "name": "Synthetic workshop maintenance retrieval",
+  "cases": [
+    {
+      "id": "pump-safe-isolation",
+      "query": "How do I safely isolate the CP-20 pump?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "centrifugal-pump.md",
+          "text_contains": "close the suction valve, close the discharge valve and drain the casing"
+        }
+      ]
+    },
+    {
+      "id": "pump-bearing-grease",
+      "query": "Which grease and quantity do the pump bearings need?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "centrifugal-pump.md",
+          "text_contains": "12 grams of NLGI 2 lithium-complex grease"
+        }
+      ]
+    },
+    {
+      "id": "pump-low-pressure",
+      "query": "What should I inspect when pump outlet pressure is low?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "centrifugal-pump.md",
+          "text_contains": "inspect the suction strainer for blockage"
+        }
+      ]
+    },
+    {
+      "id": "compressor-drain",
+      "query": "How should I drain condensate from the air receiver?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "air-compressor.md",
+          "text_contains": "vent the receiver until the pressure gauge reads zero"
+        }
+      ]
+    },
+    {
+      "id": "compressor-belt-deflection",
+      "query": "What is the correct AC-40 drive-belt deflection?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "air-compressor.md",
+          "text_contains": "drive belt should deflect 10 millimetres"
+        }
+      ]
+    },
+    {
+      "id": "compressor-t07",
+      "query": "The compressor shows T-07. What must I check?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "air-compressor.md",
+          "text_contains": "Check that the ventilation grille is clear and that the cooling fan turns freely"
+        }
+      ]
+    },
+    {
+      "id": "conveyor-tracking",
+      "query": "How far should I turn a conveyor tracking screw?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "belt-conveyor.md",
+          "text_contains": "using quarter turns"
+        }
+      ]
+    },
+    {
+      "id": "conveyor-s14",
+      "query": "What does conveyor code S-14 mean?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "belt-conveyor.md",
+          "text_contains": "infeed photoelectric sensor remained blocked for more than 20 seconds"
+        }
+      ]
+    },
+    {
+      "id": "conveyor-gear-oil",
+      "query": "Which oil is used to top up the conveyor gearbox?",
+      "answerable": true,
+      "relevant_sources": [
+        {
+          "document": "belt-conveyor.md",
+          "text_contains": "Use ISO VG 220 gear oil"
+        }
+      ]
+    },
+    {
+      "id": "unknown-pump-torque",
+      "query": "What is the CP-20 motor mounting bolt torque?",
+      "answerable": false,
+      "relevant_sources": []
+    },
+    {
+      "id": "unknown-compressor-filter",
+      "query": "What is the AC-40 air-filter part number?",
+      "answerable": false,
+      "relevant_sources": []
+    },
+    {
+      "id": "unknown-conveyor-speed",
+      "query": "What is the maximum BC-12 belt speed?",
+      "answerable": false,
+      "relevant_sources": []
+    }
+  ]
+}
