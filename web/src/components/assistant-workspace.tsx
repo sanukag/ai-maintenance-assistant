@@ -30,7 +30,15 @@ function AnswerText({ text }: { text: string }) {
   );
 }
 
-function StoredAnswer({ message }: { message: ConversationMessage }) {
+function StoredAnswer({
+  message,
+  feedbackLoading,
+  onFeedback,
+}: {
+  message: ConversationMessage;
+  feedbackLoading: boolean;
+  onFeedback: (message: ConversationMessage, rating: "up" | "down") => void;
+}) {
   const answerable = message.answerable !== false;
   return (
     <section className="answer-card stored-answer">
@@ -59,6 +67,13 @@ function StoredAnswer({ message }: { message: ConversationMessage }) {
         </div>
       )}
       <p className="safety-note"><Icon name="shield" /> Confirm critical steps against the approved manual and your site safety procedures.</p>
+      <div className="answer-feedback">
+        <span>Was this response helpful?</span>
+        <div>
+          <button type="button" aria-label="Mark response as helpful" aria-pressed={message.feedback === "up"} disabled={feedbackLoading} onClick={() => onFeedback(message, "up")}><Icon name="thumb-up" /></button>
+          <button type="button" aria-label="Mark response as unhelpful" aria-pressed={message.feedback === "down"} disabled={feedbackLoading} onClick={() => onFeedback(message, "down")}><Icon name="thumb-down" /></button>
+        </div>
+      </div>
     </section>
   );
 }
@@ -73,6 +88,7 @@ export function AssistantWorkspace() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [feedbackLoadingId, setFeedbackLoadingId] = useState<string | null>(null);
   const [initialising, setInitialising] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,6 +181,33 @@ export function AssistantWorkspace() {
     }
   }
 
+  async function submitFeedback(message: ConversationMessage, rating: "up" | "down") {
+    if (!conversationId || feedbackLoadingId) return;
+    const clearing = message.feedback === rating;
+    setFeedbackLoadingId(message.id);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/backend/conversations/${conversationId}/messages/${message.id}/feedback`,
+        clearing
+          ? { method: "DELETE" }
+          : {
+              method: "PUT",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ rating }),
+            },
+      );
+      if (!response.ok) await readJson(response);
+      setMessages((current) => current.map((item) => (
+        item.id === message.id ? { ...item, feedback: clearing ? null : rating } : item
+      )));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Response feedback could not be saved.");
+    } finally {
+      setFeedbackLoadingId(null);
+    }
+  }
+
   return (
     <div className="page page-assistant">
       <header className="page-header assistant-header">
@@ -187,7 +230,7 @@ export function AssistantWorkspace() {
             <section className="conversation-transcript" aria-label="Conversation messages">
               {messages.map((message) => message.role === "user" ? (
                 <article className="user-message" key={message.id}><span>You</span><p>{message.content}</p></article>
-              ) : <StoredAnswer message={message} key={message.id} />)}
+              ) : <StoredAnswer message={message} feedbackLoading={feedbackLoadingId === message.id} onFeedback={submitFeedback} key={message.id} />)}
             </section>
           )}
 

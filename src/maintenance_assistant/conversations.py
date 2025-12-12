@@ -27,6 +27,13 @@ class ConversationRole(StrEnum):
     ASSISTANT = "assistant"
 
 
+class ResponseFeedback(StrEnum):
+    """A worker's current rating for one assistant response."""
+
+    UP = "up"
+    DOWN = "down"
+
+
 @dataclass(frozen=True, slots=True)
 class ConversationCitation:
     """A durable citation snapshot that survives manual lifecycle changes."""
@@ -63,6 +70,7 @@ class ConversationMessage:
     input_tokens: int | None = None
     output_tokens: int | None = None
     citations: tuple[ConversationCitation, ...] = ()
+    feedback: ResponseFeedback | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,8 +260,13 @@ class ConversationStore:
                     return None
                 message_rows = connection.execute(
                     """
-                    SELECT * FROM conversation_messages
-                    WHERE conversation_id = ? ORDER BY sequence
+                    SELECT conversation_messages.*,
+                           conversation_message_feedback.rating AS feedback
+                    FROM conversation_messages
+                    LEFT JOIN conversation_message_feedback
+                      ON conversation_message_feedback.message_id = conversation_messages.id
+                    WHERE conversation_messages.conversation_id = ?
+                    ORDER BY conversation_messages.sequence
                     """,
                     (conversation_id,),
                 ).fetchall()
@@ -267,6 +280,78 @@ class ConversationStore:
                 "Conversation history could not be queried",
             ) from error
         return detail
+
+    def set_response_feedback(
+        self,
+        conversation_id: str,
+        message_id: str,
+        rating: ResponseFeedback,
+    ) -> ResponseFeedback:
+        """Create or replace the rating for one assistant response."""
+
+        self.document_store.initialise()
+        now = datetime.now(UTC).isoformat()
+        try:
+            with self._connection() as connection:
+                message = connection.execute(
+                    """
+                    SELECT role FROM conversation_messages
+                    WHERE id = ? AND conversation_id = ?
+                    """,
+                    (message_id, conversation_id),
+                ).fetchone()
+                if message is None:
+                    raise KeyError(message_id)
+                if message["role"] != ConversationRole.ASSISTANT.value:
+                    raise ValueError("Feedback can only be recorded for assistant responses")
+                connection.execute(
+                    """
+                    INSERT INTO conversation_message_feedback (
+                        id, conversation_id, message_id, rating, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(message_id) DO UPDATE SET
+                        rating = excluded.rating,
+                        updated_at = excluded.updated_at
+                    """,
+                    (str(uuid4()), conversation_id, message_id, rating.value, now, now),
+                )
+        except (KeyError, ValueError):
+            raise
+        except sqlite3.Error as error:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Response feedback could not be saved locally",
+            ) from error
+        return rating
+
+    def clear_response_feedback(self, conversation_id: str, message_id: str) -> None:
+        """Clear a response rating while retaining the conversation message."""
+
+        self.document_store.initialise()
+        try:
+            with self._connection() as connection:
+                message = connection.execute(
+                    """
+                    SELECT role FROM conversation_messages
+                    WHERE id = ? AND conversation_id = ?
+                    """,
+                    (message_id, conversation_id),
+                ).fetchone()
+                if message is None:
+                    raise KeyError(message_id)
+                if message["role"] != ConversationRole.ASSISTANT.value:
+                    raise ValueError("Feedback can only be cleared for assistant responses")
+                connection.execute(
+                    "DELETE FROM conversation_message_feedback WHERE message_id = ?",
+                    (message_id,),
+                )
+        except (KeyError, ValueError):
+            raise
+        except sqlite3.Error as error:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Response feedback could not be cleared locally",
+            ) from error
 
     def delete_conversation(self, conversation_id: str) -> bool:
         """Delete a conversation and its cascading message history."""
@@ -374,5 +459,10 @@ def _message_from_row(row: sqlite3.Row) -> ConversationMessage:
                 line_end=item["line_end"],
             )
             for item in citations
+        ),
+        feedback=(
+            ResponseFeedback(row["feedback"])
+            if row["feedback"] is not None
+            else None
         ),
     )

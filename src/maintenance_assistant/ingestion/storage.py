@@ -201,7 +201,23 @@ CREATE INDEX IF NOT EXISTS conversation_messages_conversation_idx
 ON conversation_messages(conversation_id, sequence);
 """
 
-_CURRENT_SCHEMA_VERSION = 7
+_MIGRATION_VERSION_8 = """
+CREATE TABLE IF NOT EXISTS conversation_message_feedback (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL
+        REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL UNIQUE
+        REFERENCES conversation_messages(id) ON DELETE CASCADE,
+    rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS conversation_feedback_conversation_idx
+ON conversation_message_feedback(conversation_id);
+"""
+
+_CURRENT_SCHEMA_VERSION = 8
 
 
 class LocalDocumentStore:
@@ -247,6 +263,10 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_7)
                     connection.execute("PRAGMA user_version = 7")
                     version = 7
+                if version == 7:
+                    connection.executescript(_MIGRATION_VERSION_8)
+                    connection.execute("PRAGMA user_version = 8")
+                    version = 8
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"

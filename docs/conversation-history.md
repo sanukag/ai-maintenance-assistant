@@ -11,8 +11,8 @@ and does not require an additional external service.
 
 ## What is stored
 
-SQLite schema version 7 adds a conversation record and an ordered message
-ledger. Each successful answer request stores, in one transaction:
+SQLite schema version 8 includes a conversation record, an ordered message
+ledger and response feedback. Each successful answer request stores, in one transaction:
 
 - the worker's exact normalised question;
 - the assistant's validated response;
@@ -50,9 +50,14 @@ unique and ordered.
 - `GET /conversations` lists threads by most recent activity with pagination.
 - `GET /conversations/{id}` returns every ordered message and citation.
 - `DELETE /conversations/{id}` permanently removes the thread and all messages.
+- `PUT /conversations/{id}/messages/{message_id}/feedback` records or changes a
+  thumbs-up or thumbs-down rating for an assistant response.
+- `DELETE /conversations/{id}/messages/{message_id}/feedback` clears that rating.
 
 Conversation deletion does not delete manuals, chunks or vectors. Manual
 deletion does not erase citation snapshots retained in an earlier conversation.
+Feedback is limited to assistant messages, has foreign keys to both its message
+and conversation, and is removed automatically when the conversation is deleted.
 
 ## Context boundary
 

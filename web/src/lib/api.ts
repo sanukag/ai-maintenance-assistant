@@ -102,6 +102,7 @@ export type ConversationMessage = {
   model: string | null;
   usage: { input_tokens: number; output_tokens: number } | null;
   citations: ConversationCitation[];
+  feedback: "up" | "down" | null;
 };
 
 export type ConversationDetail = {

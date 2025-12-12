@@ -308,6 +308,14 @@ a { color: inherit; text-decoration: none; }
 .source-excerpt span { display: block; margin-top: 9px; color: #899591; font-size: 9px; }
 .safety-note { display: flex; align-items: center; gap: 7px; margin: 20px 0 0; padding: 11px 13px; color: #6b7466; background: #f8f6ed; border-radius: 10px; font-size: 10px; line-height: 1.4; }
 .safety-note svg { flex: 0 0 auto; width: 14px; color: #8b7d42; }
+.answer-feedback { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.answer-feedback > span { color: #7b8884; font-size: 9.5px; }
+.answer-feedback > div { display: flex; gap: 5px; }
+.answer-feedback button { width: 32px; height: 32px; display: grid; place-items: center; color: #63736e; background: #f5f7f4; border: 1px solid #dce3dd; border-radius: 8px; cursor: pointer; }
+.answer-feedback button:hover:not(:disabled) { color: var(--forest); background: #edf3ed; }
+.answer-feedback button[aria-pressed="true"] { color: var(--forest); background: var(--mint); border-color: #bfd9ad; }
+.answer-feedback button:disabled { opacity: .5; cursor: wait; }
+.answer-feedback svg { width: 15px; }
 .answer-loading { min-height: 260px; }
 .answer-loading .answer-heading { grid-template-columns: 44px 1fr; }
 .answer-loading > p { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }

@@ -12,6 +12,7 @@ from maintenance_assistant.conversations import (
     ConversationCitation,
     ConversationDetail,
     ConversationMessage,
+    ResponseFeedback,
 )
 from maintenance_assistant.ingestion import (
     DocumentLifecycleStatus,
@@ -470,6 +471,7 @@ class ConversationMessageResponse(BaseModel):
     model: str | None
     usage: AnswerUsageResponse | None
     citations: list[ConversationCitationResponse]
+    feedback: ResponseFeedback | None
 
     @classmethod
     def from_message(
@@ -498,7 +500,22 @@ class ConversationMessageResponse(BaseModel):
                 ConversationCitationResponse.from_citation(citation)
                 for citation in message.citations
             ],
+            feedback=message.feedback,
         )
+
+
+class ResponseFeedbackRequest(BaseModel):
+    """A worker rating submitted for an assistant response."""
+
+    rating: ResponseFeedback
+
+
+class ResponseFeedbackResponse(BaseModel):
+    """The stored current rating for an assistant response."""
+
+    conversation_id: str
+    message_id: str
+    rating: ResponseFeedback
 
 
 class ConversationResponse(BaseModel):

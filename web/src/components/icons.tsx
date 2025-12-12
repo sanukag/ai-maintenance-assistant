@@ -19,7 +19,9 @@ export type IconName =
   | "arrow"
   | "archive"
   | "trash"
-  | "history";
+  | "history"
+  | "thumb-up"
+  | "thumb-down";
 
 export function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {
   const common = {
@@ -55,6 +57,8 @@ export function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGEle
     archive: <><path d="M4 7h16v14H4zM3 3h18v4H3zM9 11h6" /></>,
     trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6" /></>,
     history: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5M12 7v5l3 2" /></>,
+    "thumb-up": <><path d="M7 10v11H3V10h4Z" /><path d="M7 19h10.2a2 2 0 0 0 1.95-1.56l1.5-6.5A2 2 0 0 0 18.7 8.5H14l.7-3.1A2.8 2.8 0 0 0 12 2l-5 8v9Z" /></>,
+    "thumb-down": <><path d="M7 14V3H3v11h4Z" /><path d="M7 5h10.2a2 2 0 0 1 1.95 1.56l1.5 6.5a2 2 0 0 1-1.95 2.44H14l.7 3.1A2.8 2.8 0 0 1 12 22l-5-8V5Z" /></>,
   };
 
   return <svg {...common}>{paths[name]}</svg>;

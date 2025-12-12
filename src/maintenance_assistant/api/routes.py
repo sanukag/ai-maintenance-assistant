@@ -20,6 +20,8 @@ from maintenance_assistant.api.schemas import (
     HealthResponse,
     IngestionResponse,
     ReindexResponse,
+    ResponseFeedbackRequest,
+    ResponseFeedbackResponse,
     RevisionHistoryResponse,
     SearchRequest,
     SearchResponse,
@@ -339,6 +341,57 @@ def get_conversation(
     if conversation is None:
         raise ApiError(404, "conversation_not_found", "Conversation was not found")
     return ConversationResponse.from_detail(conversation)
+
+
+@router.put(
+    "/conversations/{conversation_id}/messages/{message_id}/feedback",
+    response_model=ResponseFeedbackResponse,
+    tags=["conversations"],
+)
+def set_response_feedback(
+    conversation_id: str,
+    message_id: str,
+    request: ResponseFeedbackRequest,
+    services: ApiServices = Depends(get_services),
+) -> ResponseFeedbackResponse:
+    """Create or replace the worker rating for one assistant response."""
+
+    try:
+        rating = services.conversations.set_response_feedback(
+            conversation_id,
+            message_id,
+            request.rating,
+        )
+    except KeyError as error:
+        raise ApiError(404, "response_not_found", "Assistant response was not found") from error
+    except ValueError as error:
+        raise ApiError(422, "feedback_not_allowed", str(error)) from error
+    return ResponseFeedbackResponse(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        rating=rating,
+    )
+
+
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}/feedback",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["conversations"],
+)
+def clear_response_feedback(
+    conversation_id: str,
+    message_id: str,
+    services: ApiServices = Depends(get_services),
+) -> Response:
+    """Clear a worker rating without deleting the assistant response."""
+
+    try:
+        services.conversations.clear_response_feedback(conversation_id, message_id)
+    except KeyError as error:
+        raise ApiError(404, "response_not_found", "Assistant response was not found") from error
+    except ValueError as error:
+        raise ApiError(422, "feedback_not_allowed", str(error)) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete(

@@ -61,8 +61,8 @@ const conversation = {
 const conversationDetail = {
   conversation,
   messages: [
-    { id: "message-1", sequence: 0, role: "user", content: "How do I isolate the pump?", created_at: conversation.created_at, scope_document_id: null, answerable: null, model: null, usage: null, citations: [] },
-    { id: "message-2", sequence: 1, role: "assistant", content: "Disconnect and lock out the electrical supply [S1].", created_at: conversation.updated_at, scope_document_id: null, answerable: true, model: "test-answer", usage: { input_tokens: 20, output_tokens: 8 }, citations: [citation] },
+    { id: "message-1", sequence: 0, role: "user", content: "How do I isolate the pump?", created_at: conversation.created_at, scope_document_id: null, answerable: null, model: null, usage: null, citations: [], feedback: null },
+    { id: "message-2", sequence: 1, role: "assistant", content: "Disconnect and lock out the electrical supply [S1].", created_at: conversation.updated_at, scope_document_id: null, answerable: true, model: "test-answer", usage: { input_tokens: 20, output_tokens: 8 }, citations: [citation], feedback: null },
   ],
 };
 
@@ -170,6 +170,35 @@ describe("AssistantWorkspace", () => {
         conversation_id: conversation.id,
       });
     });
+  });
+
+  it("records and clears feedback for an assistant response", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
+      if (url.endsWith("/feedback") && options?.method === "PUT") return Response.json({ rating: "up" });
+      if (url.endsWith("/feedback") && options?.method === "DELETE") return new Response(null, { status: 204 });
+      if (url.includes(`/conversations/${conversation.id}`)) return Response.json(conversationDetail);
+      return Response.json({}, { status: 404 });
+    }));
+    render(<AssistantWorkspace />);
+    window.dispatchEvent(new CustomEvent("assistant-conversation-selected", { detail: { conversationId: conversation.id } }));
+
+    const helpful = await screen.findByRole("button", { name: "Mark response as helpful" });
+    fireEvent.click(helpful);
+    await waitFor(() => expect(helpful).toHaveAttribute("aria-pressed", "true"));
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/backend/conversations/${conversation.id}/messages/message-2/feedback`,
+      expect.objectContaining({ method: "PUT" }),
+    );
+
+    fireEvent.click(helpful);
+    await waitFor(() => expect(helpful).toHaveAttribute("aria-pressed", "false"));
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/backend/conversations/${conversation.id}/messages/message-2/feedback`,
+      { method: "DELETE" },
+    );
   });
 
   it("explains where to go when answer providers are not configured", async () => {

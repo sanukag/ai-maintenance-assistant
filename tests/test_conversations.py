@@ -4,7 +4,11 @@ import sqlite3
 import pytest
 
 from maintenance_assistant.answering import GroundedAnswer
-from maintenance_assistant.conversations import ConversationRole, ConversationStore
+from maintenance_assistant.conversations import (
+    ConversationRole,
+    ConversationStore,
+    ResponseFeedback,
+)
 from maintenance_assistant.ingestion import IngestionError, LocalDocumentStore
 
 
@@ -90,6 +94,52 @@ def test_conversation_title_is_normalised_and_bounded(tmp_path: Path) -> None:
     assert len(detail.conversation.title) == 80
     assert detail.conversation.title.endswith("…")
     assert "  " not in detail.conversation.title
+
+
+def test_response_feedback_is_replaced_cleared_and_cascades(tmp_path: Path) -> None:
+    document_store = LocalDocumentStore(tmp_path / "data")
+    store = ConversationStore(document_store)
+    detail = store.record_exchange(_answer("Question"))
+    conversation_id = detail.conversation.id
+    assistant_message = detail.messages[1]
+
+    assert store.set_response_feedback(
+        conversation_id,
+        assistant_message.id,
+        ResponseFeedback.UP,
+    ) is ResponseFeedback.UP
+    assert store.get_conversation(conversation_id).messages[1].feedback is ResponseFeedback.UP
+    store.set_response_feedback(
+        conversation_id,
+        assistant_message.id,
+        ResponseFeedback.DOWN,
+    )
+    assert store.get_conversation(conversation_id).messages[1].feedback is ResponseFeedback.DOWN
+    store.clear_response_feedback(conversation_id, assistant_message.id)
+    assert store.get_conversation(conversation_id).messages[1].feedback is None
+
+    store.set_response_feedback(conversation_id, assistant_message.id, ResponseFeedback.UP)
+    assert store.delete_conversation(conversation_id) is True
+    connection = sqlite3.connect(document_store.database_path)
+    try:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM conversation_message_feedback"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert count == 0
+
+    with pytest.raises(KeyError):
+        store.set_response_feedback(conversation_id, "missing", ResponseFeedback.UP)
+    active = store.record_exchange(_answer("Another question"))
+    with pytest.raises(ValueError, match="assistant"):
+        store.set_response_feedback(
+            active.conversation.id,
+            active.messages[0].id,
+            ResponseFeedback.UP,
+        )
+    with pytest.raises(ValueError, match="assistant"):
+        store.clear_response_feedback(active.conversation.id, active.messages[0].id)
 
 
 def test_conversation_store_rolls_back_both_messages_when_one_write_fails(

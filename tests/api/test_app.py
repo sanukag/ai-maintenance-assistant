@@ -295,6 +295,7 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
         "/answers",
         "/conversations",
         "/conversations/{conversation_id}",
+        "/conversations/{conversation_id}/messages/{message_id}/feedback",
     }
 
 
@@ -520,6 +521,61 @@ def test_answer_endpoint_rejects_missing_conversation_before_generation(
     assert response.json()["error"]["code"] == "conversation_not_found"
     assert missing_delete.status_code == 404
     assert answers.calls == []
+
+
+def test_response_feedback_can_be_changed_cleared_and_validated(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+        answer_provider=FixedAnswerProvider(),
+    )
+
+    with TestClient(application) as client:
+        client.post(
+            "/documents",
+            files={"file": ("manual.txt", b"Pump isolation procedure.", "text/plain")},
+        )
+        answer = client.post("/answers", json={"question": "How do I isolate it?"})
+        conversation_id = answer.json()["conversation_id"]
+        initial = client.get(f"/conversations/{conversation_id}").json()
+        user_message, assistant_message = initial["messages"]
+        helpful = client.put(
+            f"/conversations/{conversation_id}/messages/{assistant_message['id']}/feedback",
+            json={"rating": "up"},
+        )
+        changed = client.put(
+            f"/conversations/{conversation_id}/messages/{assistant_message['id']}/feedback",
+            json={"rating": "down"},
+        )
+        rated = client.get(f"/conversations/{conversation_id}")
+        invalid_target = client.put(
+            f"/conversations/{conversation_id}/messages/{user_message['id']}/feedback",
+            json={"rating": "up"},
+        )
+        missing = client.put(
+            f"/conversations/{conversation_id}/messages/missing/feedback",
+            json={"rating": "up"},
+        )
+        invalid_rating = client.put(
+            f"/conversations/{conversation_id}/messages/{assistant_message['id']}/feedback",
+            json={"rating": "maybe"},
+        )
+        cleared = client.delete(
+            f"/conversations/{conversation_id}/messages/{assistant_message['id']}/feedback"
+        )
+        after_clear = client.get(f"/conversations/{conversation_id}")
+
+    assert helpful.status_code == 200
+    assert helpful.json()["rating"] == "up"
+    assert changed.json()["rating"] == "down"
+    assert rated.json()["messages"][1]["feedback"] == "down"
+    assert invalid_target.status_code == 422
+    assert invalid_target.json()["error"]["code"] == "feedback_not_allowed"
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "response_not_found"
+    assert invalid_rating.status_code == 422
+    assert cleared.status_code == 204
+    assert after_clear.json()["messages"][1]["feedback"] is None
 
 
 def test_answer_endpoint_requires_both_providers(tmp_path: Path) -> None:
