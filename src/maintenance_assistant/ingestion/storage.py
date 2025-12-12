@@ -431,6 +431,18 @@ class LocalDocumentStore:
             document_type=grouped["document_type"],
         )
 
+    def remove_metadata_option(self, category: str, value: str) -> None:
+        """Remove one reusable catalogue value after affected manuals are updated."""
+
+        if category not in {"brand", "machine", "site", "document_type"}:
+            raise ValueError("Unknown metadata category")
+        self.initialise()
+        with self._connection() as connection:
+            connection.execute(
+                "DELETE FROM metadata_options WHERE category = ? AND value_key = ?",
+                (category, value.casefold()),
+            )
+
     def update_document_metadata(
         self,
         document_id: str,

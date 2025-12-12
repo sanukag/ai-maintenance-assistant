@@ -269,6 +269,54 @@ def test_metadata_flows_through_upload_options_search_answers_and_history(
     }
 
 
+def test_metadata_can_be_edited_renamed_merged_and_removed(tmp_path: Path) -> None:
+    embeddings = KeywordEmbeddingProvider()
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=embeddings,
+    )
+    with TestClient(application) as client:
+        first = client.post(
+            "/documents",
+            files={"file": ("one.txt", b"First pump procedure.", "text/plain")},
+            data={"brand": ["Acme", "Legacy"], "machine": "P-100"},
+        ).json()["document"]
+        second = client.post(
+            "/documents",
+            files={"file": ("two.txt", b"Second pump procedure.", "text/plain")},
+            data={"brand": "Legacy", "machine": "P-200"},
+        ).json()["document"]
+
+        edited = client.patch(
+            f"/documents/{first['id']}/metadata",
+            json={"brand": ["Acme", "Northwind"], "machine": ["P-100"]},
+        )
+        merged = client.patch(
+            "/metadata/options/brand/Legacy",
+            json={"replacement": "Northwind"},
+        )
+        removed = client.patch(
+            "/metadata/options/machine/P-200",
+            json={"replacement": None},
+        )
+        second_after = client.get(f"/documents/{second['id']}").json()
+        options = client.get("/metadata/options").json()
+
+    assert edited.status_code == 200
+    assert edited.json()["metadata"]["brand"] == ["Acme", "Northwind"]
+    assert merged.json()["affected_documents"] == 1
+    assert removed.json()["affected_documents"] == 1
+    assert second_after["metadata"] == {
+        "brand": ["Northwind"],
+        "machine": [],
+        "site": [],
+        "document_type": [],
+    }
+    assert options["brand"] == ["Acme", "Northwind"]
+    assert "P-200" not in options["machine"]
+    assert any("Brand: Northwind" in call[0] for call in embeddings.calls)
+
+
 def test_upload_rejects_invalid_metadata(tmp_path: Path) -> None:
     application = create_app(settings=_settings(tmp_path), embedding_provider=None)
 
@@ -375,8 +423,10 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
     assert set(schema["paths"]) == {
         "/health",
         "/metadata/options",
+        "/metadata/options/{category}/{value}",
         "/documents",
         "/documents/{document_id}",
+        "/documents/{document_id}/metadata",
         "/documents/{document_id}/archive",
         "/documents/{document_id}/reindex",
         "/documents/{document_id}/revisions",
