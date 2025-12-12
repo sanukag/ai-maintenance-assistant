@@ -39,6 +39,7 @@ from OCR and requires `OPENAI_API_KEY`.
 | `GET` | `/health` | Check storage, OCR, visual analysis and provider availability |
 | `POST` | `/documents` | Upload and ingest one PDF, image, text or Markdown document |
 | `GET` | `/documents` | List metadata with pagination and lifecycle filtering |
+| `GET` | `/metadata/options` | List current equipment classifications for dropdowns |
 | `GET` | `/documents/{document_id}` | Retrieve one document's metadata |
 | `GET` | `/documents/{document_id}/revisions` | List retained revision history |
 | `POST` | `/documents/{document_id}/revisions` | Install a replacement revision |
@@ -49,6 +50,8 @@ from OCR and requires `OPENAI_API_KEY`.
 | `POST` | `/answers` | Generate a grounded answer with verified citations |
 | `GET` | `/conversations` | List saved conversations from newest to oldest |
 | `GET` | `/conversations/{conversation_id}` | Reopen every message and citation in a conversation |
+| `PUT` | `/conversations/{conversation_id}/messages/{message_id}/feedback` | Record or replace answer feedback |
+| `DELETE` | `/conversations/{conversation_id}/messages/{message_id}/feedback` | Clear answer feedback |
 | `DELETE` | `/conversations/{conversation_id}` | Permanently delete a conversation and its messages |
 
 Local storage paths and document content hashes are deliberately excluded from
@@ -56,10 +59,14 @@ responses.
 
 ## Upload a document
 
-Send one multipart field named `file`:
+Send one multipart field named `file`. Optional `brand`, `machine`, `site` and
+`document_type` fields classify the manual:
 
 ```bash
-curl -F "file=@./manuals/pump.pdf" http://127.0.0.1:8000/documents
+curl -F "file=@./manuals/pump.pdf" \
+  -F "brand=Acme" -F "machine=P-100" -F "site=North plant" \
+  -F "document_type=Service manual" \
+  http://127.0.0.1:8000/documents
 ```
 
 The API streams the upload into a temporary directory in 1 MB blocks and stops
@@ -130,7 +137,9 @@ curl -X POST http://127.0.0.1:8000/search \
   -d '{"query":"How do I isolate the pump?","limit":5}'
 ```
 
-Add `document_id` to restrict results to one stored document. Each result
+Add `document_id`, `brand`, `machine`, `site` or `document_type` to restrict
+results. Criteria are intersected, case-insensitively, with the current-manual
+boundary. Each result
 contains its normalised hybrid score, raw semantic and lexical diagnostic
 scores, contributing `retrieval_methods`, embedding model, safe document
 metadata, child chunk, larger `parent_context` and available source location.
@@ -145,7 +154,7 @@ curl -X POST http://127.0.0.1:8000/answers \
   -d '{"question":"How do I isolate the pump?","max_sources":5}'
 ```
 
-Add `document_id` to restrict the evidence to one stored document. The API
+Add the same document or metadata criteria to restrict the evidence. The API
 embeds the question, hybrid-ranks local child chunks, deduplicates shared parents and
 labels up to `max_sources` contexts `S1`, `S2` and so on. The configured answer
 model may use only those contexts. A successful response has this shape:

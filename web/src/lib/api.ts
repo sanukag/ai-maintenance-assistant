@@ -12,6 +12,15 @@ export type Health = {
   answer_model: string | null;
 };
 
+export type DocumentMetadata = {
+  brand: string | null;
+  machine: string | null;
+  site: string | null;
+  document_type: string | null;
+};
+
+export type MetadataOptions = { items: DocumentMetadata[] };
+
 export type DocumentRecord = {
   id: string;
   original_filename: string;
@@ -27,6 +36,7 @@ export type DocumentRecord = {
   revision: number;
   supersedes_document_id: string | null;
   lifecycle_updated_at: string;
+  metadata: DocumentMetadata;
 };
 
 export type DocumentList = {
@@ -103,6 +113,7 @@ export type ConversationMessage = {
   usage: { input_tokens: number; output_tokens: number } | null;
   citations: ConversationCitation[];
   feedback: "up" | "down" | null;
+  scope_metadata: DocumentMetadata;
 };
 
 export type ConversationDetail = {

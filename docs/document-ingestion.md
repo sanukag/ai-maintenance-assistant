@@ -25,8 +25,9 @@ calls the explicitly configured provider.
    lines without rewriting the document's meaning.
 7. Split text into section-aligned parent context and smaller retrieval children
    using configurable model-token budgets and word-aligned child overlap.
-8. When enabled, create one embedding for every child chunk; parents are stored
-   as context and are not embedded separately.
+8. Prefix each child with any selected brand, machine, site/area and document
+   type, then create one embedding per child when embeddings are enabled. Parent
+   sections are stored as context and are not embedded separately.
 9. Copy the original into controlled local storage and save its metadata,
    lifecycle state, chunks and vectors to SQLite in one transaction.
 
@@ -35,7 +36,9 @@ changed after validation.
 
 If the document already exists, ingestion checks whether its chunks have
 vectors for the configured model and dimensions. Only missing vectors are
-created and backfilled.
+created and backfilled. If supplied metadata differs from the stored values,
+the existing document is updated and every active-model vector is refreshed so
+the stored classification and embedding content cannot drift apart.
 
 ## Local storage
 
@@ -53,7 +56,9 @@ data/
 Generated document identifiers determine storage paths; user-provided
 filenames are retained only as metadata. The SQLite database contains document
 fingerprints, extraction details, creation times, lifecycle state, revision
-links, parent sections, ordered child chunks and any enabled embeddings.
+links, equipment classification, parent sections, ordered child chunks and any
+enabled embeddings. Metadata values are optional, whitespace-normalised,
+limited to 100 characters and reject control characters.
 
 Each chunk records the source information available for its format:
 
@@ -135,7 +140,8 @@ available to application logging without exposing document content.
   English language data by default.
 - Password-protected PDFs are rejected.
 - Text and Markdown documents must use UTF-8 encoding.
-- Exact duplicates are reused rather than installed as a new revision.
+- Exact duplicates are reused rather than installed as a new revision; changed
+  classifications update that record and refresh its active vectors.
 - Ingestion runs synchronously; there is no background processing queue yet.
 - Local hybrid ranking calculates vector similarity in the application process
   and exact-text ranking with SQLite FTS5; this is intended for an initial small

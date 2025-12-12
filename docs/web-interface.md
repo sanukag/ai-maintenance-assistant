@@ -9,19 +9,17 @@ the normal question-and-manual workflow.
 The interface has three focused areas:
 
 - **Assistant** is the default workspace. Workers can ask a free-text question,
-  optionally restrict it to one manual, use common-question starters and inspect
-  the exact evidence behind an answer. It lists locally saved conversations,
-  reopens complete transcripts, continues a selected thread, starts a clean
-  thread, pages through older history and permanently deletes a conversation
-  after confirmation.
+  optionally restrict it by manual, brand, machine, site/area and document type,
+  use common-question starters and inspect the exact evidence behind an answer.
+  The vertical navigation lists every saved conversation below Assistant, newest
+  first in a scrollable region. Workers can reopen, continue or delete a thread.
 - **Manuals** provides drag-and-drop or file-picker upload, current and retained
   revision views, replacement, re-indexing, archiving and confirmed permanent
   deletion. It accepts digital or scanned PDFs, PNG/JPEG document images, text
-  and Markdown.
-- **Settings** shows service readiness, active provider models, local-data and
-  privacy boundaries, local OCR availability, API documentation and developer
-  runtime information. It also reports whether image and diagram understanding
-  is active and which model provides it.
+  and Markdown. Upload and revision forms use existing metadata values as
+  dropdown choices and allow a new value to be entered when required.
+- **Settings** uses a compact operational status table for provider and service
+  readiness, followed by configuration and developer runtime information.
 
 The navigation becomes a drawer on narrow screens. Tables and answer sources
 collapse progressively so important actions remain usable on a workshop tablet
@@ -33,11 +31,15 @@ The UI does not turn the API response into an opaque chat bubble. A grounded
 answer is presented as a task-focused result with:
 
 - visible inline markers such as `[S1]`;
-- a `Sources verified` state;
+- the number of available citations;
 - expandable source cards;
 - the source manual, page or section and similarity score;
 - the exact evidence excerpt; and
 - a reminder to confirm critical work against approved site procedures.
+
+Each assistant response has thumbs-up and thumbs-down controls. Selecting the
+active rating again clears it; selecting the other control replaces it. Ratings
+are stored against the assistant message in SQLite, not in browser storage.
 
 When the providers are not configured, the question action is disabled and the
 readiness state directs users to Settings. API failures use the safe message
@@ -80,7 +82,7 @@ when the API uses a different local address.
 
 ## Current boundary
 
-The interface is local and unauthenticated. It does not yet provide user roles,
-feedback capture or streaming answers.
+The interface is local and unauthenticated. It does not yet provide user roles
+or streaming answers.
 Settings deliberately reports configuration but does not edit provider values
 or accept API keys in the browser.

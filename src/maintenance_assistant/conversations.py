@@ -17,6 +17,7 @@ from maintenance_assistant.ingestion import (
     IngestionError,
     IngestionErrorCode,
     LocalDocumentStore,
+    DocumentMetadata,
 )
 
 
@@ -71,6 +72,7 @@ class ConversationMessage:
     output_tokens: int | None = None
     citations: tuple[ConversationCitation, ...] = ()
     feedback: ResponseFeedback | None = None
+    scope_metadata: DocumentMetadata = DocumentMetadata()
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +106,7 @@ class ConversationStore:
         *,
         conversation_id: str | None = None,
         scope_document_id: str | None = None,
+        scope_metadata: DocumentMetadata = DocumentMetadata(),
     ) -> ConversationDetail:
         """Atomically append one user question and its assistant response."""
 
@@ -155,8 +158,8 @@ class ConversationStore:
                     INSERT INTO conversation_messages (
                         id, conversation_id, sequence, role, content, created_at,
                         scope_document_id, answerable, model, input_tokens,
-                        output_tokens, citations_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        output_tokens, citations_json, scope_metadata_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         (
@@ -172,6 +175,7 @@ class ConversationStore:
                             None,
                             None,
                             "[]",
+                            _metadata_json(scope_metadata),
                         ),
                         (
                             str(uuid4()),
@@ -186,6 +190,7 @@ class ConversationStore:
                             answer.input_tokens,
                             answer.output_tokens,
                             json.dumps(_citation_payloads(answer)),
+                            _metadata_json(scope_metadata),
                         ),
                     ),
                 )
@@ -417,6 +422,17 @@ def _citation_payloads(answer: GroundedAnswer) -> list[dict[str, Any]]:
     return payloads
 
 
+def _metadata_json(metadata: DocumentMetadata) -> str:
+    return json.dumps(
+        {
+            "brand": metadata.brand,
+            "machine": metadata.machine,
+            "site": metadata.site,
+            "document_type": metadata.document_type,
+        }
+    )
+
+
 def _conversation_from_row(row: sqlite3.Row) -> Conversation:
     return Conversation(
         id=row["id"],
@@ -429,6 +445,7 @@ def _conversation_from_row(row: sqlite3.Row) -> Conversation:
 
 def _message_from_row(row: sqlite3.Row) -> ConversationMessage:
     citations = json.loads(row["citations_json"])
+    scope_metadata = json.loads(row["scope_metadata_json"])
     return ConversationMessage(
         id=row["id"],
         conversation_id=row["conversation_id"],
@@ -465,4 +482,5 @@ def _message_from_row(row: sqlite3.Row) -> ConversationMessage:
             if row["feedback"] is not None
             else None
         ),
+        scope_metadata=DocumentMetadata(**scope_metadata),
     )

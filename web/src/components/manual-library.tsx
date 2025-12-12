@@ -2,10 +2,94 @@
 
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
-import { type DocumentList, type DocumentRecord, formatFileSize, readJson } from "@/lib/api";
+import {
+  type DocumentList,
+  type DocumentMetadata,
+  type DocumentRecord,
+  type MetadataOptions,
+  formatFileSize,
+  readJson,
+} from "@/lib/api";
 
 type Message = { tone: "success" | "error"; text: string };
 type DestructiveAction = "archive" | "delete";
+type MetadataKey = keyof DocumentMetadata;
+
+const emptyMetadata: DocumentMetadata = { brand: null, machine: null, site: null, document_type: null };
+
+function metadataValues(options: DocumentMetadata[], key: MetadataKey) {
+  return Array.from(new Set(options.map((item) => item[key]).filter((value): value is string => Boolean(value))))
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function appendMetadata(body: FormData, metadata: DocumentMetadata) {
+  for (const key of ["brand", "machine", "site", "document_type"] as const) {
+    if (metadata[key]) body.append(key, metadata[key]);
+  }
+}
+
+function MetadataSelector({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string | null;
+  options: string[];
+  onChange: (value: string | null) => void;
+}) {
+  const [custom, setCustom] = useState(Boolean(value && !options.includes(value)));
+  return (
+    <label className="metadata-selector">
+      <span>{label}</span>
+      <select value={custom ? "__new__" : value ?? ""} onChange={(event) => {
+        if (event.target.value === "__new__") {
+          setCustom(true);
+          onChange(null);
+        } else {
+          setCustom(false);
+          onChange(event.target.value || null);
+        }
+      }}>
+        <option value="">Not specified</option>
+        {options.map((option) => <option value={option} key={option}>{option}</option>)}
+        <option value="__new__">Add new…</option>
+      </select>
+      {custom && <input aria-label={`New ${label.toLowerCase()}`} value={value ?? ""} maxLength={100} placeholder={`Enter ${label.toLowerCase()}`} onChange={(event) => onChange(event.target.value || null)} />}
+    </label>
+  );
+}
+
+function MetadataFields({
+  metadata,
+  options,
+  onChange,
+}: {
+  metadata: DocumentMetadata;
+  options: DocumentMetadata[];
+  onChange: (metadata: DocumentMetadata) => void;
+}) {
+  const fields: { key: MetadataKey; label: string }[] = [
+    { key: "brand", label: "Brand" },
+    { key: "machine", label: "Machine" },
+    { key: "site", label: "Site / area" },
+    { key: "document_type", label: "Document type" },
+  ];
+  return (
+    <div className="manual-metadata-fields">
+      {fields.map((field) => (
+        <MetadataSelector
+          key={field.key}
+          label={field.label}
+          value={metadata[field.key]}
+          options={metadataValues(options, field.key)}
+          onChange={(value) => onChange({ ...metadata, [field.key]: value })}
+        />
+      ))}
+    </div>
+  );
+}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
@@ -21,6 +105,10 @@ export function ManualLibrary() {
   const input = useRef<HTMLInputElement>(null);
   const replacementInput = useRef<HTMLInputElement>(null);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [metadataOptions, setMetadataOptions] = useState<DocumentMetadata[]>([]);
+  const [uploadMetadata, setUploadMetadata] = useState<DocumentMetadata>(emptyMetadata);
+  const [replacementMetadata, setReplacementMetadata] = useState<DocumentMetadata>(emptyMetadata);
+  const [metadataFormKey, setMetadataFormKey] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
   const [selected, setSelected] = useState<DocumentRecord | null>(null);
@@ -50,11 +138,22 @@ export function ManualLibrary() {
     }
   }
 
+  async function loadMetadataOptions() {
+    const response = await fetch("/api/backend/metadata/options", { cache: "no-store" });
+    setMetadataOptions((await readJson<MetadataOptions>(response)).items);
+  }
+
   useEffect(() => {
     let active = true;
-    fetch("/api/backend/documents?limit=100", { cache: "no-store" })
-      .then(readJson<DocumentList>)
-      .then((result) => { if (active) setDocuments(result.items); })
+    Promise.all([
+      fetch("/api/backend/documents?limit=100", { cache: "no-store" }).then(readJson<DocumentList>),
+      fetch("/api/backend/metadata/options", { cache: "no-store" }).then(readJson<MetadataOptions>),
+    ])
+      .then(([documentList, availableMetadata]) => {
+        if (!active) return;
+        setDocuments(documentList.items);
+        setMetadataOptions(availableMetadata.items);
+      })
       .catch((error: Error) => { if (active) setMessage({ tone: "error", text: error.message }); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -88,6 +187,7 @@ export function ManualLibrary() {
     setMessage(null);
     const body = new FormData();
     body.append("file", file);
+    appendMetadata(body, uploadMetadata);
     try {
       const response = await fetch("/api/backend/documents", { method: "POST", body });
       const result = await readJson<{ status: string; document: DocumentRecord }>(response);
@@ -96,8 +196,10 @@ export function ManualLibrary() {
         text: result.status === "already_exists" ? `${result.document.title} is already in the library.` : `${result.document.title} is ready to use.`,
       });
       setFile(null);
+      setUploadMetadata(emptyMetadata);
+      setMetadataFormKey((current) => current + 1);
       if (input.current) input.current.value = "";
-      await loadDocuments();
+      await Promise.all([loadDocuments(), loadMetadataOptions()]);
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "The manual could not be added." });
     } finally {
@@ -110,6 +212,7 @@ export function ManualLibrary() {
     setHistory([]);
     setPendingAction(null);
     setReplacementFile(null);
+    setReplacementMetadata(document.metadata);
     try {
       const response = await fetch(`/api/backend/documents/${document.id}/revisions`, { cache: "no-store" });
       setHistory((await readJson<{ items: DocumentRecord[] }>(response)).items);
@@ -124,6 +227,7 @@ export function ManualLibrary() {
     setHistory([]);
     setPendingAction(null);
     setReplacementFile(null);
+    setReplacementMetadata(emptyMetadata);
   }
 
   async function replaceManual() {
@@ -131,12 +235,13 @@ export function ManualLibrary() {
     setWorking(true);
     const body = new FormData();
     body.append("file", replacementFile);
+    appendMetadata(body, replacementMetadata);
     try {
       const response = await fetch(`/api/backend/documents/${selected.id}/revisions`, { method: "POST", body });
       const result = await readJson<{ document: DocumentRecord }>(response);
       setMessage({ tone: "success", text: `${result.document.title} revision ${result.document.revision} is now current.` });
       closeManagementAfterWork();
-      await loadDocuments();
+      await Promise.all([loadDocuments(), loadMetadataOptions()]);
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "The replacement could not be installed." });
     } finally {
@@ -186,6 +291,7 @@ export function ManualLibrary() {
     setHistory([]);
     setPendingAction(null);
     setReplacementFile(null);
+    setReplacementMetadata(emptyMetadata);
   }
 
   return (
@@ -205,6 +311,7 @@ export function ManualLibrary() {
           {file ? (
             <div className="selected-file"><span className="file-type">{file.name.split(".").pop()?.toUpperCase()}</span><span><strong>{file.name}</strong><small>{formatFileSize(file.size)}</small></span><button type="button" aria-label="Remove selected file" onClick={() => setFile(null)}><Icon name="close" /></button></div>
           ) : <button className="secondary-button" type="button" onClick={() => input.current?.click()}>Choose a file</button>}
+          {file && <div className="upload-metadata-panel" key={metadataFormKey}><div><strong>Manual details</strong><span>Optional filters used during search</span></div><MetadataFields metadata={uploadMetadata} options={metadataOptions} onChange={setUploadMetadata} /></div>}
           {file && <button className="primary-button upload-submit" type="button" onClick={upload} disabled={uploading}>{uploading ? <span className="button-spinner" /> : <Icon name="upload" />}{uploading ? "Reading manual" : "Add to library"}</button>}
           <p className="upload-limit">Maximum file size: 25 MB</p>
         </div>
@@ -232,7 +339,7 @@ export function ManualLibrary() {
               <thead><tr><th>Manual</th><th>Revision</th><th>Coverage</th><th>Added</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{visibleDocuments.map((document) => (
                 <tr key={document.id} className={`manual-row-${document.lifecycle_status}`}>
-                  <td><span className={`document-icon document-${document.format}`}><Icon name="file" /></span><span><strong>{document.title}</strong><small>{document.original_filename} · {formatFileSize(document.size_bytes)}</small></span></td>
+                  <td><span className={`document-icon document-${document.format}`}><Icon name="file" /></span><span><strong>{document.title}</strong><small>{document.original_filename} · {formatFileSize(document.size_bytes)}</small><span className="document-metadata-summary">{[document.metadata.brand, document.metadata.machine, document.metadata.site].filter(Boolean).join(" · ") || "Unclassified"}</span></span></td>
                   <td><span className="revision-chip">Rev {document.revision}</span><small>{document.format === "markdown" ? "MD" : document.format.toUpperCase()}</small></td>
                   <td><strong>{document.chunk_count}</strong> sections{document.page_count ? <small>{document.page_count} pages</small> : null}</td>
                   <td>{formatDate(document.created_at)}</td>
@@ -256,7 +363,7 @@ export function ManualLibrary() {
 
             {selected.lifecycle_status === "current" && !pendingAction && (
               <div className="manual-actions-grid">
-                <article><span><Icon name="refresh" /></span><div><h3>Install a newer revision</h3><p>The current copy is retained as superseded and excluded from answers.</p><input ref={replacementInput} type="file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg" hidden onChange={(event) => chooseFile(event.target.files?.[0], true)} />{replacementFile ? <div className="replacement-choice"><strong>{replacementFile.name}</strong><button type="button" onClick={() => setReplacementFile(null)}><Icon name="close" /></button></div> : <button type="button" className="text-action" onClick={() => replacementInput.current?.click()}>Choose replacement</button>}{replacementFile && <button type="button" className="primary-button compact-button" onClick={replaceManual} disabled={working}>{working ? "Installing revision" : `Install as revision ${selected.revision + 1}`}</button>}</div></article>
+                <article><span><Icon name="refresh" /></span><div><h3>Install a newer revision</h3><p>The current copy is retained as superseded and excluded from answers.</p><input ref={replacementInput} type="file" accept=".pdf,.txt,.md,.png,.jpg,.jpeg" hidden onChange={(event) => chooseFile(event.target.files?.[0], true)} />{replacementFile ? <div className="replacement-choice"><strong>{replacementFile.name}</strong><button type="button" onClick={() => setReplacementFile(null)}><Icon name="close" /></button></div> : <button type="button" className="text-action" onClick={() => replacementInput.current?.click()}>Choose replacement</button>}{replacementFile && <MetadataFields metadata={replacementMetadata} options={metadataOptions} onChange={setReplacementMetadata} />}{replacementFile && <button type="button" className="primary-button compact-button" onClick={replaceManual} disabled={working}>{working ? "Installing revision" : `Install as revision ${selected.revision + 1}`}</button>}</div></article>
                 <article><span><Icon name="spark" /></span><div><h3>Refresh search index</h3><p>Regenerate vectors using the embedding model currently configured.</p><button type="button" className="text-action" onClick={reindexManual} disabled={working}>Re-index manual</button></div></article>
               </div>
             )}

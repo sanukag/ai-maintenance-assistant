@@ -16,6 +16,7 @@ from maintenance_assistant.ingestion import (
     StoredChunk,
     StoredDocument,
     StoredParentChunk,
+    DocumentMetadata,
     VectorSearchResult,
 )
 from maintenance_assistant.retrieval import HybridSearchService, VectorSearchService
@@ -200,6 +201,7 @@ class GroundedAnswerService:
         *,
         max_sources: int = 5,
         document_id: str | None = None,
+        metadata: DocumentMetadata | None = None,
     ) -> GroundedAnswer:
         """Return an answer grounded exclusively in retrieved stored chunks."""
 
@@ -207,6 +209,7 @@ class GroundedAnswerService:
             question,
             limit=max_sources * 3,
             document_id=document_id,
+            metadata=metadata,
         )
         results = _distinct_parent_results(candidates, max_sources)
         sources = tuple(

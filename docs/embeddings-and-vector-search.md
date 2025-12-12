@@ -23,8 +23,10 @@ Embedding is disabled by default:
 AMA_EMBEDDING_PROVIDER=none
 ```
 
-Enabling OpenAI embedding sends normalised chunk text and semantic search
-queries to the OpenAI API. It does not upload the original document file.
+Enabling OpenAI embedding sends normalised chunk text, populated equipment
+metadata prefixes and semantic search queries to the OpenAI API. Selected query
+filters are included in the query embedding. It does not upload the original
+document file.
 Original files, document metadata, chunks and returned vectors remain in the
 configured local data directory.
 
@@ -48,16 +50,20 @@ For a new document with embedding enabled:
 
 1. The normal ingestion stages create traceable parent sections and smaller
    child chunks.
-2. The provider creates one vector per child chunk.
-3. The pipeline verifies the response count, model, dimensions and finite
+2. Any brand, machine, site/area and document-type values are prefixed to each
+   embedding input without altering the stored source chunk.
+3. The provider creates one vector per child chunk.
+4. The pipeline verifies the response count, model, dimensions and finite
    values.
-4. The document, chunks and vectors are committed to SQLite together.
+5. The document, chunks and vectors are committed to SQLite together.
 
 If embedding fails, a new document is not stored as successfully ingested.
 
 When an existing document is ingested again, the pipeline checks for vectors
 matching the configured model and dimensions. It embeds and saves only missing
-chunks. Existing matching vectors do not trigger another API request.
+chunks. Existing matching vectors do not trigger another API request unless the
+worker changes the document metadata; that change refreshes the complete active
+vector set with the new prefix.
 
 ## Local vector storage
 
@@ -86,11 +92,14 @@ ama-search "pump seal replacement interval"
 The default search path:
 
 1. Creates an embedding for the query with the configured provider.
-2. Ranks matching local vectors by cosine similarity.
-3. Independently ranks exact text matches with SQLite FTS5 and BM25.
-4. Combines the two ordered candidate lists with weighted reciprocal rank
+2. When filters are selected, uses the same metadata prefix in the query
+   embedding and restricts both vector and text candidates with exact,
+   case-insensitive SQLite comparisons.
+3. Ranks matching local vectors by cosine similarity.
+4. Independently ranks exact text matches with SQLite FTS5 and BM25.
+5. Combines the two ordered candidate lists with weighted reciprocal rank
    fusion (RRF).
-5. Returns the highest-scoring children with filename, source location and their
+6. Returns the highest-scoring children with filename, source location and their
    larger parent context.
 
 The public `score` is the fused RRF score normalised to a maximum of `1`. The

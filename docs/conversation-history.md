@@ -11,14 +11,16 @@ and does not require an additional external service.
 
 ## What is stored
 
-SQLite schema version 8 includes a conversation record, an ordered message
-ledger and response feedback. Each successful answer request stores, in one transaction:
+SQLite schema version 9 includes a conversation record, an ordered message
+ledger, response feedback and the metadata filters used for each exchange. Each
+successful answer request stores, in one transaction:
 
 - the worker's exact normalised question;
 - the assistant's validated response;
 - user or assistant role and stable sequence number;
 - creation and last-updated timestamps;
 - the optional manual scope used for that question;
+- the selected brand, machine, site/area and document-type scope;
 - answerability, provider model and input/output token counts; and
 - a snapshot of every validated citation, including the source document name,
   excerpt and page, heading or line location.

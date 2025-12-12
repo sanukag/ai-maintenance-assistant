@@ -195,6 +195,85 @@ def test_repeated_upload_returns_existing_document(tmp_path: Path) -> None:
     assert second.json()["document"]["id"] == first.json()["document"]["id"]
 
 
+def test_metadata_flows_through_upload_options_search_answers_and_history(
+    tmp_path: Path,
+) -> None:
+    embeddings = KeywordEmbeddingProvider()
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=embeddings,
+        answer_provider=FixedAnswerProvider(),
+    )
+
+    with TestClient(application) as client:
+        acme = client.post(
+            "/documents",
+            files={"file": ("acme.txt", b"Pump isolation procedure.", "text/plain")},
+            data={
+                "brand": "  Acme  ",
+                "machine": "P-100",
+                "site": "North plant",
+                "document_type": "Service manual",
+            },
+        )
+        client.post(
+            "/documents",
+            files={"file": ("beta.txt", b"Pump inspection checklist.", "text/plain")},
+            data={"brand": "Beta", "machine": "P-200", "site": "South plant"},
+        )
+        options = client.get("/metadata/options")
+        searched = client.post(
+            "/search",
+            json={"query": "pump", "brand": "acme", "machine": "P-100"},
+        )
+        answered = client.post(
+            "/answers",
+            json={
+                "question": "How do I isolate the pump?",
+                "brand": "Acme",
+                "site": "North plant",
+            },
+        )
+        history = client.get(
+            f"/conversations/{answered.json()['conversation_id']}"
+        )
+
+    metadata = acme.json()["document"]["metadata"]
+    assert metadata == {
+        "brand": "Acme",
+        "machine": "P-100",
+        "site": "North plant",
+        "document_type": "Service manual",
+    }
+    assert len(options.json()["items"]) == 2
+    assert {item["brand"] for item in options.json()["items"]} == {"Acme", "Beta"}
+    assert {item["document"]["id"] for item in searched.json()["results"]} == {
+        acme.json()["document"]["id"]
+    }
+    assert "Brand: acme" in embeddings.calls[-2][0]
+    assert answered.status_code == 200
+    assert history.json()["messages"][0]["scope_metadata"] == {
+        "brand": "Acme",
+        "machine": None,
+        "site": "North plant",
+        "document_type": None,
+    }
+
+
+def test_upload_rejects_invalid_metadata(tmp_path: Path) -> None:
+    application = create_app(settings=_settings(tmp_path), embedding_provider=None)
+
+    with TestClient(application) as client:
+        response = client.post(
+            "/documents",
+            files={"file": ("manual.txt", b"Pump procedure.", "text/plain")},
+            data={"brand": "Acme\nInjected"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_metadata"
+
+
 @pytest.mark.parametrize(
     ("filename", "content", "expected_status", "expected_code"),
     [
@@ -286,6 +365,7 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
     assert schema["info"]["title"] == "AI Maintenance Assistant API"
     assert set(schema["paths"]) == {
         "/health",
+        "/metadata/options",
         "/documents",
         "/documents/{document_id}",
         "/documents/{document_id}/archive",

@@ -7,9 +7,11 @@ import {
   type ConversationDetail,
   type ConversationMessage,
   type DocumentList,
+  type DocumentMetadata,
   type DocumentRecord,
   type GroundedAnswer,
   type Health,
+  type MetadataOptions,
   readJson,
   sourceLocation,
 } from "@/lib/api";
@@ -19,6 +21,14 @@ const suggestions = [
   "How do I safely isolate equipment before maintenance?",
   "What does the manual say about abnormal vibration?",
 ];
+
+function distinctMetadataValues(
+  options: DocumentMetadata[],
+  key: keyof DocumentMetadata,
+) {
+  return Array.from(new Set(options.map((item) => item[key]).filter((value): value is string => Boolean(value))))
+    .sort((left, right) => left.localeCompare(right));
+}
 
 function AnswerText({ text }: { text: string }) {
   return (
@@ -81,7 +91,12 @@ function StoredAnswer({
 export function AssistantWorkspace() {
   const [question, setQuestion] = useState("");
   const [documentId, setDocumentId] = useState("");
+  const [brand, setBrand] = useState("");
+  const [machine, setMachine] = useState("");
+  const [site, setSite] = useState("");
+  const [documentType, setDocumentType] = useState("");
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [metadataOptions, setMetadataOptions] = useState<DocumentMetadata[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
@@ -102,6 +117,11 @@ export function AssistantWorkspace() {
       setConversationTitle(detail.conversation.title);
       setMessages(detail.messages);
       setDocumentId(detail.messages.at(-1)?.scope_document_id ?? "");
+      const previousMetadata = detail.messages.at(-1)?.scope_metadata;
+      setBrand(previousMetadata?.brand ?? "");
+      setMachine(previousMetadata?.machine ?? "");
+      setSite(previousMetadata?.site ?? "");
+      setDocumentType(previousMetadata?.document_type ?? "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Conversation history could not be opened.");
     } finally {
@@ -115,6 +135,10 @@ export function AssistantWorkspace() {
     setMessages([]);
     setQuestion("");
     setDocumentId("");
+    setBrand("");
+    setMachine("");
+    setSite("");
+    setDocumentType("");
     setError(null);
   }, []);
 
@@ -123,11 +147,13 @@ export function AssistantWorkspace() {
     Promise.all([
       fetch("/api/backend/health", { cache: "no-store" }).then(readJson<Health>),
       fetch("/api/backend/documents?limit=100&lifecycle_status=current", { cache: "no-store" }).then(readJson<DocumentList>),
+      fetch("/api/backend/metadata/options", { cache: "no-store" }).then(readJson<MetadataOptions>),
     ])
-      .then(([serviceHealth, documentList]) => {
+      .then(([serviceHealth, documentList, availableMetadata]) => {
         if (!active) return;
         setHealth(serviceHealth);
         setDocuments(documentList.items);
+        setMetadataOptions(availableMetadata.items);
         const selected = new URLSearchParams(window.location.search).get("conversation");
         if (selected) void openConversation(selected);
       })
@@ -151,6 +177,20 @@ export function AssistantWorkspace() {
     [documentId, documents],
   );
   const ready = health?.answers === "enabled";
+  const brands = useMemo(() => distinctMetadataValues(metadataOptions, "brand"), [metadataOptions]);
+  const machines = useMemo(() => distinctMetadataValues(metadataOptions, "machine"), [metadataOptions]);
+  const sites = useMemo(() => distinctMetadataValues(metadataOptions, "site"), [metadataOptions]);
+  const documentTypes = useMemo(() => distinctMetadataValues(metadataOptions, "document_type"), [metadataOptions]);
+
+  function selectDocument(value: string) {
+    setDocumentId(value);
+    const document = documents.find((item) => item.id === value);
+    if (!document) return;
+    setBrand(document.metadata.brand ?? "");
+    setMachine(document.metadata.machine ?? "");
+    setSite(document.metadata.site ?? "");
+    setDocumentType(document.metadata.document_type ?? "");
+  }
 
   async function submitQuestion(event: FormEvent) {
     event.preventDefault();
@@ -166,6 +206,10 @@ export function AssistantWorkspace() {
           question: prepared,
           max_sources: 5,
           ...(documentId ? { document_id: documentId } : {}),
+          ...(brand ? { brand } : {}),
+          ...(machine ? { machine } : {}),
+          ...(site ? { site } : {}),
+          ...(documentType ? { document_type: documentType } : {}),
           ...(conversationId ? { conversation_id: conversationId } : {}),
         }),
       });
@@ -250,11 +294,18 @@ export function AssistantWorkspace() {
               rows={4}
               maxLength={2000}
             />
+            <fieldset className="question-metadata-filters">
+              <legend>Equipment filters <span>Optional</span></legend>
+              <label>Brand<select aria-label="Filter by brand" value={brand} onChange={(event) => setBrand(event.target.value)}><option value="">All brands</option>{brands.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
+              <label>Machine<select aria-label="Filter by machine" value={machine} onChange={(event) => setMachine(event.target.value)}><option value="">All machines</option>{machines.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
+              <label>Site / area<select aria-label="Filter by site or area" value={site} onChange={(event) => setSite(event.target.value)}><option value="">All sites</option>{sites.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
+              <label>Document type<select aria-label="Filter by document type" value={documentType} onChange={(event) => setDocumentType(event.target.value)}><option value="">All types</option>{documentTypes.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
+            </fieldset>
             <div className="question-actions">
               <label className="document-picker">
                 <span className="sr-only">Search within a manual</span>
                 <Icon name="manual" />
-                <select value={documentId} onChange={(event) => setDocumentId(event.target.value)}>
+                <select value={documentId} onChange={(event) => selectDocument(event.target.value)}>
                   <option value="">All manuals</option>
                   {documents.map((document) => <option value={document.id} key={document.id}>{document.title}</option>)}
                 </select>

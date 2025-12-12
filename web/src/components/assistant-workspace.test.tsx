@@ -17,6 +17,7 @@ const document = {
   revision: 1,
   supersedes_document_id: null,
   lifecycle_updated_at: "2026-07-13T09:00:00Z",
+  metadata: { brand: "Acme", machine: "P-100", site: "North plant", document_type: "Service manual" },
 };
 
 const health = {
@@ -61,8 +62,8 @@ const conversation = {
 const conversationDetail = {
   conversation,
   messages: [
-    { id: "message-1", sequence: 0, role: "user", content: "How do I isolate the pump?", created_at: conversation.created_at, scope_document_id: null, answerable: null, model: null, usage: null, citations: [], feedback: null },
-    { id: "message-2", sequence: 1, role: "assistant", content: "Disconnect and lock out the electrical supply [S1].", created_at: conversation.updated_at, scope_document_id: null, answerable: true, model: "test-answer", usage: { input_tokens: 20, output_tokens: 8 }, citations: [citation], feedback: null },
+    { id: "message-1", sequence: 0, role: "user", content: "How do I isolate the pump?", created_at: conversation.created_at, scope_document_id: null, answerable: null, model: null, usage: null, citations: [], feedback: null, scope_metadata: document.metadata },
+    { id: "message-2", sequence: 1, role: "assistant", content: "Disconnect and lock out the electrical supply [S1].", created_at: conversation.updated_at, scope_document_id: null, answerable: true, model: "test-answer", usage: { input_tokens: 20, output_tokens: 8 }, citations: [citation], feedback: null, scope_metadata: document.metadata },
   ],
 };
 
@@ -72,6 +73,7 @@ describe("AssistantWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
       if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/metadata/options")) return Response.json({ items: [document.metadata] });
       if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
       if (url.includes("/answers") && options?.method === "POST") {
         return Response.json({
@@ -107,6 +109,7 @@ describe("AssistantWorkspace", () => {
     render(<AssistantWorkspace />);
 
     expect(await screen.findByText("Knowledge base ready")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Filter by brand"), { target: { value: "Acme" } });
     fireEvent.change(screen.getByLabelText("Maintenance question"), {
       target: { value: "How do I isolate the pump?" },
     });
@@ -127,6 +130,10 @@ describe("AssistantWorkspace", () => {
       "/api/backend/answers",
       expect.objectContaining({ method: "POST" }),
     ));
+    const answerCall = vi.mocked(fetch).mock.calls.find(([url, options]) =>
+      String(url).includes("/answers") && options?.method === "POST",
+    );
+    expect(JSON.parse(String(answerCall?.[1]?.body))).toMatchObject({ brand: "Acme" });
   });
 
   it("fills the question box from a worker-friendly suggestion", async () => {
@@ -144,6 +151,7 @@ describe("AssistantWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
       if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/metadata/options")) return Response.json({ items: [document.metadata] });
       if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
       if (url.includes(`/conversations/${conversation.id}`)) return Response.json(conversationDetail);
       if (url.includes("/conversations")) return Response.json({ items: [conversation], limit: 50, offset: 0 });
@@ -176,6 +184,7 @@ describe("AssistantWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
       if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/metadata/options")) return Response.json({ items: [document.metadata] });
       if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
       if (url.endsWith("/feedback") && options?.method === "PUT") return Response.json({ rating: "up" });
       if (url.endsWith("/feedback") && options?.method === "DELETE") return new Response(null, { status: 204 });
@@ -205,6 +214,9 @@ describe("AssistantWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes("/health")) {
         return Response.json({ ...health, embeddings: "disabled", answers: "disabled" });
+      }
+      if (String(input).includes("/metadata/options")) {
+        return Response.json({ items: [document.metadata] });
       }
       if (String(input).includes("/conversations")) {
         return Response.json({ items: [], limit: 50, offset: 0 });
