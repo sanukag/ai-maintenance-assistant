@@ -31,7 +31,7 @@ describe("AppShell", () => {
 
     const chats = await screen.findAllByText(/Inspect compressor vibration|Replace the pump seal/);
     expect(chats.map((item) => item.textContent)).toEqual([recent.title, older.title]);
-    expect(screen.getByRole("button", { name: /assistant.*maintenance workspace/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /assistant.*maintenance workspace/i })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: /manuals.*document library/i })).toHaveAttribute("href", "/manuals");
     expect(screen.getByRole("link", { name: /settings.*system information/i })).toHaveAttribute("href", "/settings");
   });
