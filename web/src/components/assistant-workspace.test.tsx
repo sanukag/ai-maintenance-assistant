@@ -33,6 +33,39 @@ const health = {
   answer_model: "test-answer",
 };
 
+const citation = {
+  source_id: "S1",
+  score: 0.94,
+  document_id: document.id,
+  document_title: document.title,
+  original_filename: document.original_filename,
+  chunk_id: "chunk-1",
+  chunk_sequence: 2,
+  parent_context_id: "parent-1",
+  excerpt: "Disconnect and lock out the electrical supply.",
+  page_start: 8,
+  page_end: 8,
+  headings: ["Isolation"],
+  line_start: null,
+  line_end: null,
+};
+
+const conversation = {
+  id: "conversation-1",
+  title: "How do I isolate the pump?",
+  created_at: "2026-07-14T09:00:00Z",
+  updated_at: "2026-07-14T09:01:00Z",
+  message_count: 2,
+};
+
+const conversationDetail = {
+  conversation,
+  messages: [
+    { id: "message-1", sequence: 0, role: "user", content: "How do I isolate the pump?", created_at: conversation.created_at, scope_document_id: null, answerable: null, model: null, usage: null, citations: [] },
+    { id: "message-2", sequence: 1, role: "assistant", content: "Disconnect and lock out the electrical supply [S1].", created_at: conversation.updated_at, scope_document_id: null, answerable: true, model: "test-answer", usage: { input_tokens: 20, output_tokens: 8 }, citations: [citation] },
+  ],
+};
+
 describe("AssistantWorkspace", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
@@ -41,6 +74,7 @@ describe("AssistantWorkspace", () => {
       if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
       if (url.includes("/answers") && options?.method === "POST") {
         return Response.json({
+          conversation_id: conversation.id,
           question: "How do I isolate the pump?",
           answerable: true,
           answer: "Disconnect and lock out the electrical supply [S1].",
@@ -62,6 +96,8 @@ describe("AssistantWorkspace", () => {
           usage: { input_tokens: 20, output_tokens: 8 },
         });
       }
+      if (url.includes(`/conversations/${conversation.id}`)) return Response.json(conversationDetail);
+      if (url.includes("/conversations")) return Response.json({ items: [], limit: 50, offset: 0 });
       return Response.json({}, { status: 404 });
     }));
   });
@@ -103,10 +139,67 @@ describe("AssistantWorkspace", () => {
     );
   });
 
+  it("reopens a saved conversation and sends follow-ups to the same thread", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
+      if (url.includes(`/conversations/${conversation.id}`)) return Response.json(conversationDetail);
+      if (url.includes("/conversations")) return Response.json({ items: [conversation], limit: 50, offset: 0 });
+      if (url.includes("/answers") && options?.method === "POST") return Response.json({ conversation_id: conversation.id });
+      return Response.json({}, { status: 404 });
+    }));
+
+    render(<AssistantWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: /^how do i isolate the pump\?14 jul/i }));
+
+    expect(await screen.findByText("Based on your manuals")).toBeInTheDocument();
+    expect(screen.getAllByText("How do I isolate the pump?").length).toBeGreaterThan(1);
+    fireEvent.change(screen.getByLabelText("Maintenance question"), {
+      target: { value: "What should I inspect afterwards?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send follow-up" }));
+
+    await waitFor(() => {
+      const answerCall = vi.mocked(fetch).mock.calls.find(([url, options]) =>
+        String(url).includes("/answers") && options?.method === "POST",
+      );
+      expect(JSON.parse(String(answerCall?.[1]?.body))).toMatchObject({
+        question: "What should I inspect afterwards?",
+        conversation_id: conversation.id,
+      });
+    });
+  });
+
+  it("deletes a saved conversation after confirmation", async () => {
+    let deleted = false;
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
+      if (url.includes(`/conversations/${conversation.id}`) && options?.method === "DELETE") {
+        deleted = true;
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes("/conversations")) return Response.json({ items: deleted ? [] : [conversation], limit: 50, offset: 0 });
+      return Response.json({}, { status: 404 });
+    }));
+
+    render(<AssistantWorkspace />);
+    fireEvent.click(await screen.findByRole("button", { name: `Delete ${conversation.title}` }));
+
+    expect(confirm).toHaveBeenCalled();
+    expect(await screen.findByText("Your completed conversations will appear here.")).toBeInTheDocument();
+  });
+
   it("explains where to go when answer providers are not configured", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes("/health")) {
         return Response.json({ ...health, embeddings: "disabled", answers: "disabled" });
+      }
+      if (String(input).includes("/conversations")) {
+        return Response.json({ items: [], limit: 50, offset: 0 });
       }
       return Response.json({ items: [document], limit: 100, offset: 0 });
     }));

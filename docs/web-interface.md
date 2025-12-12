@@ -10,7 +10,10 @@ The interface has three focused areas:
 
 - **Assistant** is the default workspace. Workers can ask a free-text question,
   optionally restrict it to one manual, use common-question starters and inspect
-  the exact evidence behind an answer.
+  the exact evidence behind an answer. It lists locally saved conversations,
+  reopens complete transcripts, continues a selected thread, starts a clean
+  thread, pages through older history and permanently deletes a conversation
+  after confirmation.
 - **Manuals** provides drag-and-drop or file-picker upload, current and retained
   revision views, replacement, re-indexing, archiving and confirmed permanent
   deletion. It accepts digital or scanned PDFs, PNG/JPEG document images, text
@@ -52,6 +55,10 @@ addresses or credentials from becoming frontend configuration. It is a thin
 transport layer: FastAPI remains responsible for validation, ingestion,
 retrieval, answer generation and stable error codes.
 
+Conversation history uses the same proxy. The browser holds only the currently
+displayed transcript; durable messages live in the local SQLite data volume
+rather than `localStorage`.
+
 ## Local development
 
 Start the API in one terminal:
@@ -74,6 +81,6 @@ when the API uses a different local address.
 ## Current boundary
 
 The interface is local and unauthenticated. It does not yet provide user roles,
-saved question history, feedback capture or streaming answers.
+feedback capture or streaming answers.
 Settings deliberately reports configuration but does not edit provider values
 or accept API keys in the browser.

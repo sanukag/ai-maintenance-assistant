@@ -19,7 +19,9 @@ For each `POST /answers` request, the application:
    chunks; and
 7. maps valid citations back to the retrieved child and the exact parent
    evidence excerpt supplied to the model, with available page, heading or line
-   locations.
+   locations; and
+8. atomically stores the successful user question and assistant response in the
+   selected conversation, including immutable citation snapshots.
 
 When visual analysis was enabled during ingestion, those sources can include a
 page-cited model description of a diagram or image. The citation points back to
@@ -76,8 +78,14 @@ OPENAI_API_KEY=your-project-api-key
 
 The question and selected parent context leave the local machine when the OpenAI
 answer provider is enabled. Original files, SQLite metadata and vectors remain
-local. Answer responses are not stored by the application in this initial
-version.
+local. Completed user questions, assistant responses and their citations are
+stored in the local SQLite data directory.
+
+Stored conversation history is a record, not model memory. Earlier messages are
+not automatically included in retrieval queries or sent to the answer provider.
+Each follow-up is grounded independently using its own question and current
+manual set. This prevents an earlier generated response from silently becoming
+evidence for a later answer.
 
 Documents must have vectors for the active embedding model and dimensions.
 Re-submit an already ingested document while embeddings are enabled to backfill
@@ -88,7 +96,7 @@ missing vectors without creating a duplicate document.
 - The API returns complete responses rather than streaming partial text.
 - Retrieval uses weighted reciprocal rank fusion over semantic and full-text
   candidates, without a learned reranker or a calibrated minimum score.
-- Answer history and user feedback are not persisted.
+- User feedback is not yet captured alongside stored conversations.
 - The retrieval dataset does not yet measure answer correctness or
   citation entailment against representative maintenance manuals.
 - The local API has no authentication or rate limiting and must not be exposed

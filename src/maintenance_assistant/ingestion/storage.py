@@ -169,7 +169,39 @@ AFTER UPDATE OF text ON chunks BEGIN
 END;
 """
 
-_CURRENT_SCHEMA_VERSION = 6
+_MIGRATION_VERSION_7 = """
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL CHECK (length(title) > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL
+        REFERENCES conversations(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL CHECK (length(content) > 0),
+    created_at TEXT NOT NULL,
+    scope_document_id TEXT,
+    answerable INTEGER CHECK (answerable IS NULL OR answerable IN (0, 1)),
+    model TEXT,
+    input_tokens INTEGER CHECK (input_tokens IS NULL OR input_tokens >= 0),
+    output_tokens INTEGER CHECK (output_tokens IS NULL OR output_tokens >= 0),
+    citations_json TEXT NOT NULL DEFAULT '[]',
+    UNIQUE (conversation_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS conversations_updated_at_idx
+ON conversations(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS conversation_messages_conversation_idx
+ON conversation_messages(conversation_id, sequence);
+"""
+
+_CURRENT_SCHEMA_VERSION = 7
 
 
 class LocalDocumentStore:
@@ -211,6 +243,10 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_6)
                     connection.execute("PRAGMA user_version = 6")
                     version = 6
+                if version == 6:
+                    connection.executescript(_MIGRATION_VERSION_7)
+                    connection.execute("PRAGMA user_version = 7")
+                    version = 7
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"

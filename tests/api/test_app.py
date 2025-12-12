@@ -293,6 +293,8 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
         "/documents/{document_id}/revisions",
         "/search",
         "/answers",
+        "/conversations",
+        "/conversations/{conversation_id}",
     }
 
 
@@ -426,6 +428,7 @@ def test_answer_endpoint_returns_verified_traceable_citations(tmp_path: Path) ->
     assert health.json()["answer_model"] == "test-answer"
     assert response.status_code == 200
     body = response.json()
+    assert body["conversation_id"]
     assert body["question"] == "How do I maintain the pump?"
     assert body["answerable"] is True
     assert body["answer"] == "Isolate the pump before maintenance [S1]."
@@ -442,6 +445,81 @@ def test_answer_endpoint_returns_verified_traceable_citations(tmp_path: Path) ->
     assert "Valve inspection procedure." in citation["excerpt"]
     assert "stored_path" not in citation["document"]
     assert answers.calls[0][0] == "How do I maintain the pump?"
+
+
+def test_answer_endpoint_persists_continues_lists_and_deletes_conversations(
+    tmp_path: Path,
+) -> None:
+    answers = FixedAnswerProvider()
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+        answer_provider=answers,
+    )
+
+    with TestClient(application) as client:
+        uploaded = client.post(
+            "/documents",
+            files={"file": ("manual.txt", b"Pump isolation procedure.", "text/plain")},
+        )
+        first = client.post(
+            "/answers",
+            json={"question": "How do I isolate the pump?"},
+        )
+        conversation_id = first.json()["conversation_id"]
+        second = client.post(
+            "/answers",
+            json={
+                "question": "What should I inspect afterwards?",
+                "conversation_id": conversation_id,
+            },
+        )
+        conversations = client.get("/conversations")
+        client.delete(f"/documents/{uploaded.json()['document']['id']}")
+        detail = client.get(f"/conversations/{conversation_id}")
+        deleted = client.delete(f"/conversations/{conversation_id}")
+        missing = client.get(f"/conversations/{conversation_id}")
+
+    assert second.json()["conversation_id"] == conversation_id
+    assert conversations.json()["items"][0]["message_count"] == 4
+    messages = detail.json()["messages"]
+    assert [message["role"] for message in messages] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+    assert messages[0]["content"] == "How do I isolate the pump?"
+    assert messages[1]["content"] == "Isolate the pump before maintenance [S1]."
+    assert messages[1]["model"] == "test-answer"
+    assert messages[1]["usage"] == {"input_tokens": 24, "output_tokens": 8}
+    assert messages[1]["citations"][0]["document_title"] == "manual"
+    assert messages[1]["citations"][0]["excerpt"]
+    assert deleted.status_code == 204
+    assert missing.status_code == 404
+
+
+def test_answer_endpoint_rejects_missing_conversation_before_generation(
+    tmp_path: Path,
+) -> None:
+    answers = FixedAnswerProvider()
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+        answer_provider=answers,
+    )
+
+    with TestClient(application) as client:
+        response = client.post(
+            "/answers",
+            json={"question": "Question", "conversation_id": "missing"},
+        )
+        missing_delete = client.delete("/conversations/missing")
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "conversation_not_found"
+    assert missing_delete.status_code == 404
+    assert answers.calls == []
 
 
 def test_answer_endpoint_requires_both_providers(tmp_path: Path) -> None:

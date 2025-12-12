@@ -12,6 +12,9 @@ from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.schemas import (
     AnswerRequest,
     AnswerResponse,
+    ConversationListResponse,
+    ConversationResponse,
+    ConversationSummaryResponse,
     DocumentListResponse,
     DocumentResponse,
     HealthResponse,
@@ -266,12 +269,92 @@ def answer_question(
             "answers_disabled",
             "Grounded answers require enabled embedding and answer providers",
         )
+    if (
+        request.conversation_id is not None
+        and services.conversations.get_conversation(request.conversation_id) is None
+    ):
+        raise ApiError(
+            404,
+            "conversation_not_found",
+            "Conversation was not found",
+        )
     answer = services.answers.answer(
         request.question,
         max_sources=request.max_sources,
         document_id=request.document_id,
     )
-    return AnswerResponse.from_answer(answer)
+    try:
+        conversation = services.conversations.record_exchange(
+            answer,
+            conversation_id=request.conversation_id,
+            scope_document_id=request.document_id,
+        )
+    except KeyError as error:
+        raise ApiError(
+            404,
+            "conversation_not_found",
+            "Conversation was not found",
+        ) from error
+    return AnswerResponse.from_answer(answer, conversation.conversation.id)
+
+
+@router.get(
+    "/conversations",
+    response_model=ConversationListResponse,
+    tags=["conversations"],
+)
+def list_conversations(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    services: ApiServices = Depends(get_services),
+) -> ConversationListResponse:
+    """List locally stored conversations from newest to oldest."""
+
+    conversations = services.conversations.list_conversations(
+        limit=limit,
+        offset=offset,
+    )
+    return ConversationListResponse(
+        items=[
+            ConversationSummaryResponse.from_conversation(conversation)
+            for conversation in conversations
+        ],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/conversations/{conversation_id}",
+    response_model=ConversationResponse,
+    tags=["conversations"],
+)
+def get_conversation(
+    conversation_id: str,
+    services: ApiServices = Depends(get_services),
+) -> ConversationResponse:
+    """Return every stored message in one conversation."""
+
+    conversation = services.conversations.get_conversation(conversation_id)
+    if conversation is None:
+        raise ApiError(404, "conversation_not_found", "Conversation was not found")
+    return ConversationResponse.from_detail(conversation)
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["conversations"],
+)
+def delete_conversation(
+    conversation_id: str,
+    services: ApiServices = Depends(get_services),
+) -> Response:
+    """Permanently delete one conversation and all of its messages."""
+
+    if not services.conversations.delete_conversation(conversation_id):
+        raise ApiError(404, "conversation_not_found", "Conversation was not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _safe_filename(uploaded_name: str | None) -> str:

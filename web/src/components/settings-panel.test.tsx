@@ -32,6 +32,7 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("Next.js 16 · App Router")).toBeInTheDocument();
     expect(screen.getByText("OPENAI_API_KEY")).toBeInTheDocument();
     expect(screen.getByText("AMA_VISUAL_ANALYSIS_PROVIDER")).toBeInTheDocument();
+    expect(screen.getByText("Conversation history")).toBeInTheDocument();
     expect(screen.queryByText(/replace-me|sk-/)).not.toBeInTheDocument();
   });
 

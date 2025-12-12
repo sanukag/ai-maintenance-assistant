@@ -8,6 +8,7 @@ from fastapi import Request
 
 from maintenance_assistant.answering import AnswerProvider, GroundedAnswerService
 from maintenance_assistant.config import Settings
+from maintenance_assistant.conversations import ConversationStore
 from maintenance_assistant.embeddings import EmbeddingProvider
 from maintenance_assistant.ingestion import IngestionService, LocalDocumentStore
 from maintenance_assistant.ocr import OCRProvider
@@ -21,6 +22,7 @@ class ApiServices:
 
     settings: Settings
     store: LocalDocumentStore
+    conversations: ConversationStore
     ingestion: IngestionService
     ocr_provider: OCRProvider | None
     visual_analysis_provider: VisualAnalysisProvider | None
@@ -56,6 +58,7 @@ def build_services(
     return ApiServices(
         settings=settings,
         store=configured_store,
+        conversations=ConversationStore(configured_store),
         ingestion=IngestionService(
             settings,
             store=configured_store,
