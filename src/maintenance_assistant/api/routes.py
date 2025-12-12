@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
 from maintenance_assistant.api.errors import ApiError
@@ -19,14 +19,22 @@ from maintenance_assistant.api.schemas import (
     DocumentResponse,
     HealthResponse,
     IngestionResponse,
+    DocumentMetadataResponse,
+    MetadataOptionsResponse,
     ReindexResponse,
+    ResponseFeedbackRequest,
+    ResponseFeedbackResponse,
     RevisionHistoryResponse,
     SearchRequest,
     SearchResponse,
     SearchResultResponse,
 )
 from maintenance_assistant.api.services import ApiServices, get_services
-from maintenance_assistant.ingestion import DocumentLifecycleStatus, IngestionStatus
+from maintenance_assistant.ingestion import (
+    DocumentLifecycleStatus,
+    DocumentMetadata,
+    IngestionStatus,
+)
 
 router = APIRouter()
 _UPLOAD_BLOCK_SIZE = 1024 * 1024
@@ -81,17 +89,26 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
 async def upload_document(
     response: Response,
     file: UploadFile = File(...),
+    brand: str | None = Form(default=None),
+    machine: str | None = Form(default=None),
+    site: str | None = Form(default=None),
+    document_type: str | None = Form(default=None),
     services: ApiServices = Depends(get_services),
 ) -> IngestionResponse:
     """Upload a supported document and run the complete ingestion pipeline."""
 
     filename = _safe_filename(file.filename)
     maximum_bytes = services.settings.max_document_size_mb * 1024 * 1024
+    metadata = _document_metadata(brand, machine, site, document_type)
     try:
         with tempfile.TemporaryDirectory(prefix="ama-upload-") as temporary_directory:
             upload_path = Path(temporary_directory) / filename
             await _write_upload(file, upload_path, maximum_bytes)
-            result = await run_in_threadpool(services.ingestion.ingest, upload_path)
+            result = await run_in_threadpool(
+                services.ingestion.ingest,
+                upload_path,
+                metadata,
+            )
     finally:
         await file.close()
 
@@ -118,6 +135,24 @@ def list_documents(
         items=[DocumentResponse.from_document(document) for document in documents],
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/metadata/options",
+    response_model=MetadataOptionsResponse,
+    tags=["documents"],
+)
+def list_metadata_options(
+    services: ApiServices = Depends(get_services),
+) -> MetadataOptionsResponse:
+    """List current manual classifications for upload and retrieval dropdowns."""
+
+    return MetadataOptionsResponse(
+        items=[
+            DocumentMetadataResponse.from_metadata(metadata)
+            for metadata in services.store.list_metadata_options()
+        ]
     )
 
 
@@ -164,12 +199,17 @@ def list_document_revisions(
 async def replace_document(
     document_id: str,
     file: UploadFile = File(...),
+    brand: str | None = Form(default=None),
+    machine: str | None = Form(default=None),
+    site: str | None = Form(default=None),
+    document_type: str | None = Form(default=None),
     services: ApiServices = Depends(get_services),
 ) -> IngestionResponse:
     """Add a new revision and supersede the selected current manual."""
 
     filename = _safe_filename(file.filename)
     maximum_bytes = services.settings.max_document_size_mb * 1024 * 1024
+    metadata = _document_metadata(brand, machine, site, document_type)
     try:
         with tempfile.TemporaryDirectory(prefix="ama-revision-") as temporary_directory:
             upload_path = Path(temporary_directory) / filename
@@ -178,6 +218,7 @@ async def replace_document(
                 services.ingestion.ingest_revision,
                 upload_path,
                 document_id,
+                metadata,
             )
     finally:
         await file.close()
@@ -250,6 +291,7 @@ def search_documents(
         request.query,
         limit=request.limit,
         document_id=request.document_id,
+        metadata=request.as_metadata(),
     )
     return SearchResponse(
         results=[SearchResultResponse.from_result(result) for result in results]
@@ -282,12 +324,14 @@ def answer_question(
         request.question,
         max_sources=request.max_sources,
         document_id=request.document_id,
+        metadata=request.as_metadata(),
     )
     try:
         conversation = services.conversations.record_exchange(
             answer,
             conversation_id=request.conversation_id,
             scope_document_id=request.document_id,
+            scope_metadata=request.as_metadata(),
         )
     except KeyError as error:
         raise ApiError(
@@ -341,6 +385,57 @@ def get_conversation(
     return ConversationResponse.from_detail(conversation)
 
 
+@router.put(
+    "/conversations/{conversation_id}/messages/{message_id}/feedback",
+    response_model=ResponseFeedbackResponse,
+    tags=["conversations"],
+)
+def set_response_feedback(
+    conversation_id: str,
+    message_id: str,
+    request: ResponseFeedbackRequest,
+    services: ApiServices = Depends(get_services),
+) -> ResponseFeedbackResponse:
+    """Create or replace the worker rating for one assistant response."""
+
+    try:
+        rating = services.conversations.set_response_feedback(
+            conversation_id,
+            message_id,
+            request.rating,
+        )
+    except KeyError as error:
+        raise ApiError(404, "response_not_found", "Assistant response was not found") from error
+    except ValueError as error:
+        raise ApiError(422, "feedback_not_allowed", str(error)) from error
+    return ResponseFeedbackResponse(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        rating=rating,
+    )
+
+
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}/feedback",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["conversations"],
+)
+def clear_response_feedback(
+    conversation_id: str,
+    message_id: str,
+    services: ApiServices = Depends(get_services),
+) -> Response:
+    """Clear a worker rating without deleting the assistant response."""
+
+    try:
+        services.conversations.clear_response_feedback(conversation_id, message_id)
+    except KeyError as error:
+        raise ApiError(404, "response_not_found", "Assistant response was not found") from error
+    except ValueError as error:
+        raise ApiError(422, "feedback_not_allowed", str(error)) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.delete(
     "/conversations/{conversation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -363,6 +458,25 @@ def _safe_filename(uploaded_name: str | None) -> str:
     if filename in {"", ".", ".."}:
         raise ApiError(422, "missing_filename", "Uploaded file must have a filename")
     return filename
+
+
+def _document_metadata(
+    brand: str | None,
+    machine: str | None,
+    site: str | None,
+    document_type: str | None,
+) -> DocumentMetadata | None:
+    if all(value is None for value in (brand, machine, site, document_type)):
+        return None
+    try:
+        return DocumentMetadata(
+            brand=brand,
+            machine=machine,
+            site=site,
+            document_type=document_type,
+        )
+    except ValueError as error:
+        raise ApiError(422, "invalid_metadata", str(error)) from error
 
 
 async def _write_upload(

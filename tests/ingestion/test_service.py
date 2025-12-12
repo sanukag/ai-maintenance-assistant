@@ -6,6 +6,7 @@ import pytest
 from maintenance_assistant.config import Settings
 from maintenance_assistant.embeddings import EmbeddingBatch
 from maintenance_assistant.ingestion import (
+    DocumentMetadata,
     IngestionError,
     IngestionErrorCode,
     IngestionService,
@@ -59,6 +60,68 @@ def test_service_returns_existing_document_for_duplicate(tmp_path: Path) -> None
     assert first.status is IngestionStatus.COMPLETED
     assert second.status is IngestionStatus.ALREADY_EXISTS
     assert second.document.id == first.document.id
+
+
+def test_service_embeds_metadata_and_refreshes_changed_duplicate_metadata(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text("Inspect the seal before starting.", encoding="utf-8")
+    provider = KeywordEmbeddingProvider()
+    service = IngestionService(_settings(tmp_path), embedding_provider=provider)
+    first_metadata = DocumentMetadata(
+        brand="  Acme  Industries ",
+        machine="PX-4",
+        site="North plant",
+        document_type="Service manual",
+    )
+
+    first = service.ingest(path, first_metadata)
+
+    assert first.document.metadata.brand == "Acme Industries"
+    assert "Brand: Acme Industries" in provider.calls[0][0]
+    assert "Machine: PX-4" in provider.calls[0][0]
+    provider.calls.clear()
+
+    updated = service.ingest(
+        path,
+        DocumentMetadata(
+            brand="Beta Engineering",
+            machine="PX-4",
+            site="North plant",
+            document_type="Service manual",
+        ),
+    )
+
+    assert updated.status is IngestionStatus.ALREADY_EXISTS
+    assert updated.document.id == first.document.id
+    assert updated.document.metadata.brand == "Beta Engineering"
+    assert provider.calls and "Brand: Beta Engineering" in provider.calls[0][0]
+
+
+def test_revision_inherits_metadata_and_reindex_uses_it(tmp_path: Path) -> None:
+    first_path = tmp_path / "pump-v1.txt"
+    first_path.write_text("Inspect the pump seal.", encoding="utf-8")
+    replacement_path = tmp_path / "pump-v2.txt"
+    replacement_path.write_text("Inspect the pump seal and coupling.", encoding="utf-8")
+    provider = KeywordEmbeddingProvider()
+    service = IngestionService(_settings(tmp_path), embedding_provider=provider)
+    metadata = DocumentMetadata(brand="Acme", machine="PX-4")
+    first = service.ingest(first_path, metadata)
+
+    replacement = service.ingest_revision(replacement_path, first.document.id)
+    provider.calls.clear()
+    service.reindex(replacement.document.id)
+
+    assert replacement.document.metadata == metadata
+    assert provider.calls and "Brand: Acme" in provider.calls[0][0]
+
+
+def test_document_metadata_rejects_unsafe_or_oversized_values() -> None:
+    with pytest.raises(ValueError, match="control"):
+        DocumentMetadata(brand="Acme\nInjected")
+    with pytest.raises(ValueError, match="100"):
+        DocumentMetadata(machine="x" * 101)
 
 
 def test_service_ingests_real_pdf_with_page_traceability(tmp_path: Path) -> None:

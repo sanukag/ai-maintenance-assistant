@@ -43,6 +43,10 @@ export async function POST(request: Request, context: RouteContext) {
   return forward(request, context);
 }
 
+export async function PUT(request: Request, context: RouteContext) {
+  return forward(request, context);
+}
+
 export async function DELETE(request: Request, context: RouteContext) {
   return forward(request, context);
 }

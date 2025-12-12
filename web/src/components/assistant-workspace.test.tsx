@@ -17,6 +17,7 @@ const document = {
   revision: 1,
   supersedes_document_id: null,
   lifecycle_updated_at: "2026-07-13T09:00:00Z",
+  metadata: { brand: "Acme", machine: "P-100", site: "North plant", document_type: "Service manual" },
 };
 
 const health = {
@@ -61,16 +62,18 @@ const conversation = {
 const conversationDetail = {
   conversation,
   messages: [
-    { id: "message-1", sequence: 0, role: "user", content: "How do I isolate the pump?", created_at: conversation.created_at, scope_document_id: null, answerable: null, model: null, usage: null, citations: [] },
-    { id: "message-2", sequence: 1, role: "assistant", content: "Disconnect and lock out the electrical supply [S1].", created_at: conversation.updated_at, scope_document_id: null, answerable: true, model: "test-answer", usage: { input_tokens: 20, output_tokens: 8 }, citations: [citation] },
+    { id: "message-1", sequence: 0, role: "user", content: "How do I isolate the pump?", created_at: conversation.created_at, scope_document_id: null, answerable: null, model: null, usage: null, citations: [], feedback: null, scope_metadata: document.metadata },
+    { id: "message-2", sequence: 1, role: "assistant", content: "Disconnect and lock out the electrical supply [S1].", created_at: conversation.updated_at, scope_document_id: null, answerable: true, model: "test-answer", usage: { input_tokens: 20, output_tokens: 8 }, citations: [citation], feedback: null, scope_metadata: document.metadata },
   ],
 };
 
 describe("AssistantWorkspace", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/");
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
       if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/metadata/options")) return Response.json({ items: [document.metadata] });
       if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
       if (url.includes("/answers") && options?.method === "POST") {
         return Response.json({
@@ -106,6 +109,7 @@ describe("AssistantWorkspace", () => {
     render(<AssistantWorkspace />);
 
     expect(await screen.findByText("Knowledge base ready")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Filter by brand"), { target: { value: "Acme" } });
     fireEvent.change(screen.getByLabelText("Maintenance question"), {
       target: { value: "How do I isolate the pump?" },
     });
@@ -113,7 +117,7 @@ describe("AssistantWorkspace", () => {
 
     expect(await screen.findByText("Based on your manuals")).toBeInTheDocument();
     expect(screen.getByText("[S1]")).toBeInTheDocument();
-    expect(screen.getByText("Sources verified")).toBeInTheDocument();
+    expect(screen.getByText("1 citation")).toBeInTheDocument();
     expect(screen.getAllByText("Pump manual")).toHaveLength(2);
     expect(screen.getByText("Disconnect and lock out the electrical supply.")).toBeInTheDocument();
     expect(screen.getByText("Page 8")).toBeInTheDocument();
@@ -126,6 +130,10 @@ describe("AssistantWorkspace", () => {
       "/api/backend/answers",
       expect.objectContaining({ method: "POST" }),
     ));
+    const answerCall = vi.mocked(fetch).mock.calls.find(([url, options]) =>
+      String(url).includes("/answers") && options?.method === "POST",
+    );
+    expect(JSON.parse(String(answerCall?.[1]?.body))).toMatchObject({ brand: "Acme" });
   });
 
   it("fills the question box from a worker-friendly suggestion", async () => {
@@ -143,6 +151,7 @@ describe("AssistantWorkspace", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
       if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/metadata/options")) return Response.json({ items: [document.metadata] });
       if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
       if (url.includes(`/conversations/${conversation.id}`)) return Response.json(conversationDetail);
       if (url.includes("/conversations")) return Response.json({ items: [conversation], limit: 50, offset: 0 });
@@ -151,7 +160,7 @@ describe("AssistantWorkspace", () => {
     }));
 
     render(<AssistantWorkspace />);
-    fireEvent.click(await screen.findByRole("button", { name: /^how do i isolate the pump\?14 jul/i }));
+    window.dispatchEvent(new CustomEvent("assistant-conversation-selected", { detail: { conversationId: conversation.id } }));
 
     expect(await screen.findByText("Based on your manuals")).toBeInTheDocument();
     expect(screen.getAllByText("How do I isolate the pump?").length).toBeGreaterThan(1);
@@ -171,32 +180,43 @@ describe("AssistantWorkspace", () => {
     });
   });
 
-  it("deletes a saved conversation after confirmation", async () => {
-    let deleted = false;
-    vi.stubGlobal("confirm", vi.fn(() => true));
+  it("records and clears feedback for an assistant response", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
       if (url.includes("/health")) return Response.json(health);
+      if (url.includes("/metadata/options")) return Response.json({ items: [document.metadata] });
       if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
-      if (url.includes(`/conversations/${conversation.id}`) && options?.method === "DELETE") {
-        deleted = true;
-        return new Response(null, { status: 204 });
-      }
-      if (url.includes("/conversations")) return Response.json({ items: deleted ? [] : [conversation], limit: 50, offset: 0 });
+      if (url.endsWith("/feedback") && options?.method === "PUT") return Response.json({ rating: "up" });
+      if (url.endsWith("/feedback") && options?.method === "DELETE") return new Response(null, { status: 204 });
+      if (url.includes(`/conversations/${conversation.id}`)) return Response.json(conversationDetail);
       return Response.json({}, { status: 404 });
     }));
-
     render(<AssistantWorkspace />);
-    fireEvent.click(await screen.findByRole("button", { name: `Delete ${conversation.title}` }));
+    window.dispatchEvent(new CustomEvent("assistant-conversation-selected", { detail: { conversationId: conversation.id } }));
 
-    expect(confirm).toHaveBeenCalled();
-    expect(await screen.findByText("Your completed conversations will appear here.")).toBeInTheDocument();
+    const helpful = await screen.findByRole("button", { name: "Mark response as helpful" });
+    fireEvent.click(helpful);
+    await waitFor(() => expect(helpful).toHaveAttribute("aria-pressed", "true"));
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/backend/conversations/${conversation.id}/messages/message-2/feedback`,
+      expect.objectContaining({ method: "PUT" }),
+    );
+
+    fireEvent.click(helpful);
+    await waitFor(() => expect(helpful).toHaveAttribute("aria-pressed", "false"));
+    expect(fetch).toHaveBeenCalledWith(
+      `/api/backend/conversations/${conversation.id}/messages/message-2/feedback`,
+      { method: "DELETE" },
+    );
   });
 
   it("explains where to go when answer providers are not configured", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       if (String(input).includes("/health")) {
         return Response.json({ ...health, embeddings: "disabled", answers: "disabled" });
+      }
+      if (String(input).includes("/metadata/options")) {
+        return Response.json({ items: [document.metadata] });
       }
       if (String(input).includes("/conversations")) {
         return Response.json({ items: [], limit: 50, offset: 0 });

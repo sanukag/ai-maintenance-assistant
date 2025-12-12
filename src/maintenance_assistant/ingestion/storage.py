@@ -28,6 +28,7 @@ from maintenance_assistant.ingestion.models import (
     ChunkLocation,
     DocumentLifecycleStatus,
     DocumentFormat,
+    DocumentMetadata,
     ExtractedDocument,
     LexicalSearchResult,
     PreparedChunk,
@@ -201,7 +202,38 @@ CREATE INDEX IF NOT EXISTS conversation_messages_conversation_idx
 ON conversation_messages(conversation_id, sequence);
 """
 
-_CURRENT_SCHEMA_VERSION = 7
+_MIGRATION_VERSION_8 = """
+CREATE TABLE IF NOT EXISTS conversation_message_feedback (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL
+        REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL UNIQUE
+        REFERENCES conversation_messages(id) ON DELETE CASCADE,
+    rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS conversation_feedback_conversation_idx
+ON conversation_message_feedback(conversation_id);
+"""
+
+_MIGRATION_VERSION_9 = """
+ALTER TABLE documents ADD COLUMN brand TEXT;
+ALTER TABLE documents ADD COLUMN machine TEXT;
+ALTER TABLE documents ADD COLUMN site TEXT;
+ALTER TABLE documents ADD COLUMN document_type TEXT;
+
+ALTER TABLE conversation_messages
+ADD COLUMN scope_metadata_json TEXT NOT NULL DEFAULT '{}';
+
+CREATE INDEX IF NOT EXISTS documents_brand_idx ON documents(brand COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS documents_machine_idx ON documents(machine COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS documents_site_idx ON documents(site COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS documents_type_idx ON documents(document_type COLLATE NOCASE);
+"""
+
+_CURRENT_SCHEMA_VERSION = 9
 
 
 class LocalDocumentStore:
@@ -247,6 +279,14 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_7)
                     connection.execute("PRAGMA user_version = 7")
                     version = 7
+                if version == 7:
+                    connection.executescript(_MIGRATION_VERSION_8)
+                    connection.execute("PRAGMA user_version = 8")
+                    version = 8
+                if version == 8:
+                    connection.executescript(_MIGRATION_VERSION_9)
+                    connection.execute("PRAGMA user_version = 9")
+                    version = 9
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"
@@ -314,6 +354,111 @@ class LocalDocumentStore:
                 "Local document storage could not be queried",
             ) from error
         return tuple(self._document_from_row(row) for row in rows)
+
+    def list_metadata_options(self) -> tuple[DocumentMetadata, ...]:
+        """Return distinct populated metadata combinations from current manuals."""
+
+        self.initialise()
+        with self._connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT brand, machine, site, document_type
+                FROM documents
+                WHERE lifecycle_status = 'current'
+                  AND (brand IS NOT NULL OR machine IS NOT NULL
+                       OR site IS NOT NULL OR document_type IS NOT NULL)
+                ORDER BY brand COLLATE NOCASE, machine COLLATE NOCASE,
+                         site COLLATE NOCASE, document_type COLLATE NOCASE
+                """
+            ).fetchall()
+        return tuple(
+            DocumentMetadata(
+                brand=row["brand"],
+                machine=row["machine"],
+                site=row["site"],
+                document_type=row["document_type"],
+            )
+            for row in rows
+        )
+
+    def update_document_metadata(
+        self,
+        document_id: str,
+        metadata: DocumentMetadata,
+        embeddings: Sequence[PreparedEmbedding] = (),
+    ) -> StoredDocument:
+        """Atomically replace manual metadata and any refreshed active vectors."""
+
+        chunks = self.list_chunks(document_id)
+        if not chunks:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                "Document was not found",
+            )
+        if embeddings:
+            prepared = tuple(
+                PreparedChunk(
+                    sequence=chunk.sequence,
+                    text=chunk.text,
+                    character_count=chunk.character_count,
+                    location=chunk.location,
+                    token_count=chunk.token_count,
+                )
+                for chunk in chunks
+            )
+            _validate_prepared_embeddings(prepared, embeddings, require_complete=True)
+        chunk_ids = {chunk.sequence: chunk.id for chunk in chunks}
+        try:
+            with self._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                changed = connection.execute(
+                    """
+                    UPDATE documents
+                    SET brand = ?, machine = ?, site = ?, document_type = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        metadata.brand,
+                        metadata.machine,
+                        metadata.site,
+                        metadata.document_type,
+                        document_id,
+                    ),
+                ).rowcount
+                if changed != 1:
+                    raise DocumentLifecycleError(
+                        DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                        "Document was not found",
+                    )
+                connection.executemany(
+                    """
+                    INSERT INTO embeddings (
+                        chunk_id, model, dimensions, vector, magnitude, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(chunk_id, model, dimensions) DO UPDATE SET
+                        vector = excluded.vector,
+                        magnitude = excluded.magnitude,
+                        created_at = excluded.created_at
+                    """,
+                    [
+                        _embedding_values(chunk_ids[item.sequence], item)
+                        for item in embeddings
+                    ],
+                )
+        except DocumentLifecycleError:
+            raise
+        except (KeyError, sqlite3.Error) as error:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Document metadata could not be updated locally",
+            ) from error
+        stored = self.get_document(document_id)
+        if stored is None:
+            raise IngestionError(
+                IngestionErrorCode.STORAGE_FAILED,
+                "Updated document metadata could not be read",
+            )
+        return stored
 
     def list_chunks(self, document_id: str) -> tuple[StoredChunk, ...]:
         """Return stored chunks in document order."""
@@ -475,6 +620,7 @@ class LocalDocumentStore:
         *,
         parents: Sequence[PreparedParentChunk] = (),
         supersedes_document_id: str | None = None,
+        metadata: DocumentMetadata = DocumentMetadata(),
     ) -> StoredDocument:
         """Atomically store a fully prepared document and its chunks."""
 
@@ -539,8 +685,8 @@ class LocalDocumentStore:
                         document_format, size_bytes, title, page_count,
                         chunk_count, extractor_name, extractor_version, created_at,
                         lifecycle_status, revision, supersedes_document_id,
-                        lifecycle_updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        lifecycle_updated_at, brand, machine, site, document_type
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         document_id,
@@ -559,6 +705,10 @@ class LocalDocumentStore:
                         revision,
                         supersedes_document_id,
                         created_at.isoformat(),
+                        metadata.brand,
+                        metadata.machine,
+                        metadata.site,
+                        metadata.document_type,
                     ),
                 )
                 parent_rows = [
@@ -854,6 +1004,7 @@ class LocalDocumentStore:
         model: str,
         limit: int = 5,
         document_id: str | None = None,
+        metadata: DocumentMetadata | None = None,
     ) -> tuple[VectorSearchResult, ...]:
         """Rank locally stored vectors with cosine similarity."""
 
@@ -874,6 +1025,7 @@ class LocalDocumentStore:
         if document_id is not None:
             query += " AND chunks.document_id = ?"
             parameters.append(document_id)
+        query, parameters = _with_metadata_filters(query, parameters, metadata)
         with self._connection() as connection:
             rows = connection.execute(query, parameters).fetchall()
 
@@ -920,6 +1072,7 @@ class LocalDocumentStore:
         *,
         limit: int = 20,
         document_id: str | None = None,
+        metadata: DocumentMetadata | None = None,
     ) -> tuple[LexicalSearchResult, ...]:
         """Rank current manual chunks with SQLite full-text search."""
 
@@ -941,6 +1094,7 @@ class LocalDocumentStore:
         if document_id is not None:
             query += " AND chunks.document_id = ?"
             parameters.append(document_id)
+        query, parameters = _with_metadata_filters(query, parameters, metadata)
         query += " ORDER BY text_score, chunks.id LIMIT ?"
         parameters.append(limit)
         try:
@@ -1007,6 +1161,12 @@ class LocalDocumentStore:
             supersedes_document_id=row["supersedes_document_id"],
             lifecycle_updated_at=datetime.fromisoformat(
                 row["lifecycle_updated_at"] or row["created_at"]
+            ),
+            metadata=DocumentMetadata(
+                brand=row["brand"],
+                machine=row["machine"],
+                site=row["site"],
+                document_type=row["document_type"],
             ),
         )
 
@@ -1109,6 +1269,26 @@ def _fts_expression(query_text: str) -> str:
         if tokens:
             phrases.append(f'"{" ".join(tokens)}"')
     return " OR ".join(dict.fromkeys(phrases))
+
+
+def _with_metadata_filters(
+    query: str,
+    parameters: list[object],
+    metadata: DocumentMetadata | None,
+) -> tuple[str, list[object]]:
+    if metadata is None:
+        return query, parameters
+    columns = (
+        ("brand", metadata.brand),
+        ("machine", metadata.machine),
+        ("site", metadata.site),
+        ("document_type", metadata.document_type),
+    )
+    for column, value in columns:
+        if value is not None:
+            query += f" AND documents.{column} = ? COLLATE NOCASE"
+            parameters.append(value)
+    return query, parameters
 
 
 def _validate_chunk_hierarchy(

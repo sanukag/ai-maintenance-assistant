@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from maintenance_assistant.config import Settings
-from maintenance_assistant.ingestion import IngestionService, LocalDocumentStore
+from maintenance_assistant.ingestion import (
+    DocumentMetadata,
+    IngestionService,
+    LocalDocumentStore,
+)
 from maintenance_assistant.retrieval import HybridSearchService, VectorSearchService
 from maintenance_assistant.vision import VisualAnalysis, VisualType
 from tests.fakes import FixedVisualAnalysisProvider, KeywordEmbeddingProvider
@@ -109,6 +113,53 @@ def test_hybrid_search_can_run_with_text_ranking_only(tmp_path: Path) -> None:
     assert result.lexical_score is not None
     assert result.score == pytest.approx(1.0)
     assert provider.calls == []
+
+
+def test_hybrid_search_embeds_and_applies_case_insensitive_metadata_filters(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_directory=tmp_path / "data",
+        chunk_size_tokens=30,
+        chunk_overlap_tokens=0,
+    )
+    provider = KeywordEmbeddingProvider()
+    ingestion = IngestionService(settings, embedding_provider=provider)
+    acme = tmp_path / "acme.txt"
+    acme.write_text("Pump seal procedure for line alpha.", encoding="utf-8")
+    acme_document = ingestion.ingest(
+        acme,
+        DocumentMetadata(
+            brand="Acme",
+            machine="P-100",
+            site="North plant",
+            document_type="Service manual",
+        ),
+    ).document
+    beta = tmp_path / "beta.txt"
+    beta.write_text("Pump seal procedure for line beta.", encoding="utf-8")
+    ingestion.ingest(
+        beta,
+        DocumentMetadata(brand="Beta", machine="P-200", site="South plant"),
+    )
+    search = HybridSearchService(LocalDocumentStore(settings.data_directory), provider)
+    provider.calls.clear()
+
+    results = search.search(
+        "pump seal",
+        limit=10,
+        metadata=DocumentMetadata(brand="ACME", machine="P-100"),
+    )
+    missing = search.search(
+        "pump seal",
+        limit=10,
+        metadata=DocumentMetadata(site="Unknown site"),
+    )
+
+    assert {result.document.id for result in results} == {acme_document.id}
+    assert "Brand: ACME" in provider.calls[0][0]
+    assert "Machine: P-100" in provider.calls[0][0]
+    assert missing == ()
 
 
 def test_hybrid_search_retrieves_page_cited_visual_meaning(tmp_path: Path) -> None:

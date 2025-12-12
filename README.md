@@ -96,7 +96,9 @@ after enabling visual analysis.
 
 The Manuals page retains revision history while ensuring only current manuals
 contribute to search and answers. Workers can replace, archive, re-index or
-permanently delete a manual through explicit lifecycle controls.
+permanently delete a manual through explicit lifecycle controls. Upload forms
+can classify manuals by brand, machine, site/area and document type; the same
+dropdowns can restrict questions to the matching current manuals.
 
 ### Enable embeddings and hybrid search
 
@@ -109,8 +111,9 @@ export OPENAI_API_KEY=your-project-api-key
 ama-ingest /path/to/maintenance-manual.pdf
 ```
 
-When enabled, child chunk text is sent to the OpenAI Embeddings API. Original
-files, metadata and returned vectors remain in the local data directory.
+When enabled, child chunk text and populated equipment metadata are sent to the
+OpenAI Embeddings API. Original files, SQLite metadata and returned vectors
+remain in the local data directory.
 
 Search the embedded chunks with:
 
@@ -165,6 +168,8 @@ Every successful grounded-answer exchange is stored locally in SQLite as an
 ordered user message and assistant response. The worker interface lists earlier
 conversations, reopens their complete message and citation history, continues
 the selected thread, starts a clean conversation or permanently deletes one.
+Workers can rate each assistant response with thumbs up or down; the rating is
+stored locally against that conversation message and can be changed or cleared.
 
 Conversation history is retained by the same local data volume as manuals and
 vectors. It is not automatically sent back to the answer model or used as

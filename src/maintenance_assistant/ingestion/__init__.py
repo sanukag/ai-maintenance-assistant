@@ -15,6 +15,7 @@ from maintenance_assistant.ingestion.extractors import extract_document
 from maintenance_assistant.ingestion.models import (
     ChunkLocation,
     DocumentLifecycleStatus,
+    DocumentMetadata,
     DocumentFormat,
     ExtractedDocument,
     ExtractedSegment,
@@ -35,6 +36,7 @@ from maintenance_assistant.ingestion.models import (
     StoredParentChunk,
     ValidatedDocument,
     VectorSearchResult,
+    metadata_embedding_text,
 )
 from maintenance_assistant.ingestion.normalisation import normalise_document
 from maintenance_assistant.ingestion.service import IngestionService
@@ -45,6 +47,7 @@ from maintenance_assistant.ocr import OCRProvider, TesseractOCRProvider
 __all__ = [
     "ChunkLocation",
     "DocumentLifecycleStatus",
+    "DocumentMetadata",
     "DocumentFormat",
     "DocumentLifecycleError",
     "DocumentLifecycleErrorCode",
@@ -73,6 +76,7 @@ __all__ = [
     "TesseractOCRProvider",
     "ValidatedDocument",
     "VectorSearchResult",
+    "metadata_embedding_text",
     "chunk_document",
     "chunk_document_hierarchy",
     "extract_document",

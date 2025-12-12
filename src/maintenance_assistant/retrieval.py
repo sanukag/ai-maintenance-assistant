@@ -7,8 +7,10 @@ from math import isfinite
 from typing import TYPE_CHECKING
 
 from maintenance_assistant.ingestion.models import (
+    DocumentMetadata,
     LexicalSearchResult,
     VectorSearchResult,
+    metadata_embedding_text,
 )
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
 
@@ -44,12 +46,16 @@ class VectorSearchService:
         *,
         limit: int = 5,
         document_id: str | None = None,
+        metadata: DocumentMetadata | None = None,
     ) -> tuple[VectorSearchResult, ...]:
         """Return the most semantically related local chunks."""
 
         if not query.strip():
             raise ValueError("search query must not be empty")
-        batch = self.embedding_provider.embed([query])
+        selected_metadata = metadata or DocumentMetadata()
+        batch = self.embedding_provider.embed(
+            [metadata_embedding_text(query, selected_metadata)]
+        )
         if len(batch.vectors) != 1:
             raise ValueError("embedding provider did not return one query vector")
         return self.store.search_vectors(
@@ -57,6 +63,7 @@ class VectorSearchService:
             model=batch.model,
             limit=limit,
             document_id=document_id,
+            metadata=selected_metadata,
         )
 
 
@@ -97,6 +104,7 @@ class HybridSearchService:
         *,
         limit: int = 5,
         document_id: str | None = None,
+        metadata: DocumentMetadata | None = None,
     ) -> tuple[VectorSearchResult, ...]:
         """Return chunks ranked by fused semantic and exact-text evidence."""
 
@@ -110,6 +118,7 @@ class HybridSearchService:
                 query,
                 limit=candidate_limit,
                 document_id=document_id,
+                metadata=metadata,
             )
             if self.semantic_weight > 0
             else ()
@@ -119,6 +128,7 @@ class HybridSearchService:
                 query,
                 limit=candidate_limit,
                 document_id=document_id,
+                metadata=metadata,
             )
             if self.text_weight > 0
             else ()

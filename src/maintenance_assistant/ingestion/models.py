@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -30,6 +30,61 @@ class DocumentLifecycleStatus(StrEnum):
     CURRENT = "current"
     SUPERSEDED = "superseded"
     ARCHIVED = "archived"
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentMetadata:
+    """Optional worker-supplied equipment and document classification."""
+
+    brand: str | None = None
+    machine: str | None = None
+    site: str | None = None
+    document_type: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("brand", "machine", "site", "document_type"):
+            object.__setattr__(self, name, _normalise_metadata_value(getattr(self, name)))
+
+    @property
+    def is_empty(self) -> bool:
+        """Return whether no classification criterion was supplied."""
+
+        return not any((self.brand, self.machine, self.site, self.document_type))
+
+    def labelled_values(self) -> tuple[tuple[str, str], ...]:
+        """Return populated values in a stable embedding order."""
+
+        values = (
+            ("Brand", self.brand),
+            ("Machine", self.machine),
+            ("Site/area", self.site),
+            ("Document type", self.document_type),
+        )
+        return tuple((label, value) for label, value in values if value is not None)
+
+
+def metadata_embedding_text(text: str, metadata: DocumentMetadata) -> str:
+    """Prefix content with selected metadata while preserving empty-metadata inputs."""
+
+    if metadata.is_empty:
+        return text
+    lines = ["Equipment metadata:"]
+    lines.extend(f"{label}: {value}" for label, value in metadata.labelled_values())
+    lines.extend(("Content:", text))
+    return "\n".join(lines)
+
+
+def _normalise_metadata_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError("Document metadata must not contain control characters")
+    normalised = " ".join(value.split())
+    if not normalised:
+        return None
+    if len(normalised) > 100:
+        raise ValueError("Document metadata values must be 100 characters or fewer")
+    return normalised
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,6 +216,7 @@ class StoredDocument:
     revision: int = 1
     supersedes_document_id: str | None = None
     lifecycle_updated_at: datetime | None = None
+    metadata: DocumentMetadata = field(default_factory=DocumentMetadata)
 
 
 @dataclass(frozen=True, slots=True)

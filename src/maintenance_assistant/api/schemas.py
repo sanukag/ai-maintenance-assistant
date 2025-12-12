@@ -12,9 +12,11 @@ from maintenance_assistant.conversations import (
     ConversationCitation,
     ConversationDetail,
     ConversationMessage,
+    ResponseFeedback,
 )
 from maintenance_assistant.ingestion import (
     DocumentLifecycleStatus,
+    DocumentMetadata,
     IngestionResult,
     ReindexResult,
     StoredChunk,
@@ -53,6 +55,24 @@ class HealthResponse(BaseModel):
     answer_model: str | None
 
 
+class DocumentMetadataResponse(BaseModel):
+    """Worker-supplied equipment and document classification."""
+
+    brand: str | None
+    machine: str | None
+    site: str | None
+    document_type: str | None
+
+    @classmethod
+    def from_metadata(cls, metadata: DocumentMetadata) -> DocumentMetadataResponse:
+        return cls(
+            brand=metadata.brand,
+            machine=metadata.machine,
+            site=metadata.site,
+            document_type=metadata.document_type,
+        )
+
+
 class DocumentResponse(BaseModel):
     """Safe document metadata that excludes local paths and content hashes."""
 
@@ -70,6 +90,7 @@ class DocumentResponse(BaseModel):
     revision: int
     supersedes_document_id: str | None
     lifecycle_updated_at: datetime
+    metadata: DocumentMetadataResponse
 
     @classmethod
     def from_document(cls, document: StoredDocument) -> DocumentResponse:
@@ -90,6 +111,7 @@ class DocumentResponse(BaseModel):
             revision=document.revision,
             supersedes_document_id=document.supersedes_document_id,
             lifecycle_updated_at=document.lifecycle_updated_at or document.created_at,
+            metadata=DocumentMetadataResponse.from_metadata(document.metadata),
         )
 
 
@@ -131,6 +153,12 @@ class DocumentListResponse(BaseModel):
     offset: int
 
 
+class MetadataOptionsResponse(BaseModel):
+    """Distinct metadata combinations available for dropdown filters."""
+
+    items: list[DocumentMetadataResponse]
+
+
 class RevisionHistoryResponse(BaseModel):
     """The ordered revision history for one manual family."""
 
@@ -157,7 +185,33 @@ class ReindexResponse(BaseModel):
         )
 
 
-class SearchRequest(BaseModel):
+class MetadataFilterRequest(BaseModel):
+    """Optional exact document metadata criteria shared by search requests."""
+
+    brand: str | None = Field(default=None, max_length=100)
+    machine: str | None = Field(default=None, max_length=100)
+    site: str | None = Field(default=None, max_length=100)
+    document_type: str | None = Field(default=None, max_length=100)
+
+    @field_validator("brand", "machine", "site", "document_type")
+    @classmethod
+    def normalise_metadata(cls, value: str | None) -> str | None:
+        """Apply the same metadata constraints used by ingestion."""
+
+        if value is None:
+            return None
+        return DocumentMetadata(brand=value).brand
+
+    def as_metadata(self) -> DocumentMetadata:
+        return DocumentMetadata(
+            brand=self.brand,
+            machine=self.machine,
+            site=self.site,
+            document_type=self.document_type,
+        )
+
+
+class SearchRequest(MetadataFilterRequest):
     """A hybrid query and optional document filter."""
 
     query: str = Field(min_length=1, max_length=2_000)
@@ -285,7 +339,7 @@ class SearchResponse(BaseModel):
     results: list[SearchResultResponse]
 
 
-class AnswerRequest(BaseModel):
+class AnswerRequest(MetadataFilterRequest):
     """A question, evidence limit and optional document filter."""
 
     question: str = Field(min_length=1, max_length=2_000)
@@ -470,6 +524,8 @@ class ConversationMessageResponse(BaseModel):
     model: str | None
     usage: AnswerUsageResponse | None
     citations: list[ConversationCitationResponse]
+    feedback: ResponseFeedback | None
+    scope_metadata: DocumentMetadataResponse
 
     @classmethod
     def from_message(
@@ -498,7 +554,25 @@ class ConversationMessageResponse(BaseModel):
                 ConversationCitationResponse.from_citation(citation)
                 for citation in message.citations
             ],
+            feedback=message.feedback,
+            scope_metadata=DocumentMetadataResponse.from_metadata(
+                message.scope_metadata
+            ),
         )
+
+
+class ResponseFeedbackRequest(BaseModel):
+    """A worker rating submitted for an assistant response."""
+
+    rating: ResponseFeedback
+
+
+class ResponseFeedbackResponse(BaseModel):
+    """The stored current rating for an assistant response."""
+
+    conversation_id: str
+    message_id: str
+    rating: ResponseFeedback
 
 
 class ConversationResponse(BaseModel):

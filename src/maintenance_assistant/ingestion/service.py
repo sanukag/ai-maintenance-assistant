@@ -22,6 +22,7 @@ from maintenance_assistant.ingestion.extractors import extract_document
 from maintenance_assistant.ingestion.models import (
     IngestionResult,
     IngestionStatus,
+    DocumentMetadata,
     NormalisedDocument,
     PreparedChunk,
     PreparedChunkHierarchy,
@@ -30,6 +31,7 @@ from maintenance_assistant.ingestion.models import (
     StoredChunk,
     StoredDocument,
     ValidatedDocument,
+    metadata_embedding_text,
 )
 from maintenance_assistant.ingestion.normalisation import normalise_document
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
@@ -75,30 +77,40 @@ class IngestionService:
         )
         self.token_counter = TiktokenCounter(settings.chunk_token_encoding)
 
-    def ingest(self, path: Path) -> IngestionResult:
+    def ingest(
+        self,
+        path: Path,
+        metadata: DocumentMetadata | None = None,
+    ) -> IngestionResult:
         """Ingest one local document or return its existing stored record."""
 
         validated = validate_document(path, self.settings)
         existing = self.store.find_by_hash(validated.content_hash)
         if existing is not None:
-            return self._result_for_existing(existing)
+            return self._result_for_existing(existing, metadata)
+
+        selected_metadata = metadata or DocumentMetadata()
 
         extracted = self._extract(validated)
         normalised = normalise_document(extracted)
         hierarchy = self._prepare_hierarchy(normalised)
-        embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
+        embeddings, input_tokens = self._embed_prepared_chunks(
+            hierarchy.children,
+            selected_metadata,
+        )
         try:
             stored = self.store.save(
                 extracted,
                 hierarchy.children,
                 embeddings,
                 parents=hierarchy.parents,
+                metadata=selected_metadata,
             )
         except DuplicateDocumentError as duplicate:
             stored = self.store.get_document(duplicate.document_id)
             if stored is None:
                 raise
-            return self._result_for_existing(stored)
+            return self._result_for_existing(stored, selected_metadata)
         return IngestionResult(
             status=IngestionStatus.COMPLETED,
             document=stored,
@@ -109,7 +121,12 @@ class IngestionService:
             embedding_input_tokens=input_tokens,
         )
 
-    def ingest_revision(self, path: Path, document_id: str) -> IngestionResult:
+    def ingest_revision(
+        self,
+        path: Path,
+        document_id: str,
+        metadata: DocumentMetadata | None = None,
+    ) -> IngestionResult:
         """Ingest a new revision and supersede one current stored manual."""
 
         previous = self.store.get_document(document_id)
@@ -134,13 +151,18 @@ class IngestionService:
         extracted = self._extract(validated)
         normalised = normalise_document(extracted)
         hierarchy = self._prepare_hierarchy(normalised)
-        embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
+        selected_metadata = metadata if metadata is not None else previous.metadata
+        embeddings, input_tokens = self._embed_prepared_chunks(
+            hierarchy.children,
+            selected_metadata,
+        )
         stored = self.store.save(
             extracted,
             hierarchy.children,
             embeddings,
             parents=hierarchy.parents,
             supersedes_document_id=document_id,
+            metadata=selected_metadata,
         )
         return IngestionResult(
             status=IngestionStatus.COMPLETED,
@@ -170,7 +192,10 @@ class IngestionService:
         extracted = self._extract(validated)
         normalised = normalise_document(extracted)
         hierarchy = self._prepare_hierarchy(normalised)
-        embeddings, input_tokens = self._embed_prepared_chunks(hierarchy.children)
+        embeddings, input_tokens = self._embed_prepared_chunks(
+            hierarchy.children,
+            document.metadata,
+        )
         document = self.store.replace_chunks(
             document_id,
             extracted,
@@ -185,8 +210,25 @@ class IngestionService:
             embedding_input_tokens=input_tokens,
         )
 
-    def _result_for_existing(self, document: StoredDocument) -> IngestionResult:
+    def _result_for_existing(
+        self,
+        document: StoredDocument,
+        requested_metadata: DocumentMetadata | None = None,
+    ) -> IngestionResult:
         input_tokens = 0
+        target_metadata = requested_metadata or document.metadata
+        if target_metadata != document.metadata:
+            refreshed: tuple[PreparedEmbedding, ...] = ()
+            if self.embedding_provider is not None:
+                refreshed, input_tokens = self._embed_stored_chunks(
+                    self.store.list_chunks(document.id),
+                    target_metadata,
+                )
+            document = self.store.update_document_metadata(
+                document.id,
+                target_metadata,
+                refreshed,
+            )
         if self.embedding_provider is not None:
             missing = self.store.missing_embedding_chunks(
                 document.id,
@@ -194,7 +236,11 @@ class IngestionService:
                 dimensions=self.embedding_provider.dimensions,
             )
             if missing:
-                embeddings, input_tokens = self._embed_stored_chunks(missing)
+                embeddings, missing_tokens = self._embed_stored_chunks(
+                    missing,
+                    document.metadata,
+                )
+                input_tokens += missing_tokens
                 self.store.save_embeddings(document.id, embeddings)
             embedded_count = len(
                 self.store.list_embeddings(
@@ -218,10 +264,13 @@ class IngestionService:
     def _embed_prepared_chunks(
         self,
         chunks: Sequence[PreparedChunk],
+        metadata: DocumentMetadata = DocumentMetadata(),
     ) -> tuple[tuple[PreparedEmbedding, ...], int]:
         if self.embedding_provider is None:
             return (), 0
-        batch = self.embedding_provider.embed([chunk.text for chunk in chunks])
+        batch = self.embedding_provider.embed(
+            [metadata_embedding_text(chunk.text, metadata) for chunk in chunks]
+        )
         if (
             len(batch.vectors) != len(chunks)
             or batch.model != self.embedding_provider.model
@@ -276,6 +325,7 @@ class IngestionService:
     def _embed_stored_chunks(
         self,
         chunks: Sequence[StoredChunk],
+        metadata: DocumentMetadata = DocumentMetadata(),
     ) -> tuple[tuple[PreparedEmbedding, ...], int]:
         prepared = tuple(
             PreparedChunk(
@@ -287,4 +337,4 @@ class IngestionService:
             )
             for chunk in chunks
         )
-        return self._embed_prepared_chunks(prepared)
+        return self._embed_prepared_chunks(prepared, metadata)

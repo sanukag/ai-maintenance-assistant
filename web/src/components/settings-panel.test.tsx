@@ -24,7 +24,7 @@ describe("SettingsPanel", () => {
   it("separates live system and developer information from the worker workspace", async () => {
     render(<SettingsPanel />);
 
-    expect(await screen.findByText("All local services operational")).toBeInTheDocument();
+    expect(await screen.findByText("API connected")).toBeInTheDocument();
     expect(screen.getByText("text-embedding-test")).toBeInTheDocument();
     expect(screen.getByText("tesseract 5.5.0")).toBeInTheDocument();
     expect(screen.getByText("gpt-vision-test")).toBeInTheDocument();
@@ -32,13 +32,14 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("Next.js 16 · App Router")).toBeInTheDocument();
     expect(screen.getByText("OPENAI_API_KEY")).toBeInTheDocument();
     expect(screen.getByText("AMA_VISUAL_ANALYSIS_PROVIDER")).toBeInTheDocument();
-    expect(screen.getByText("Conversation history")).toBeInTheDocument();
+    expect(screen.getByText("Service status")).toBeInTheDocument();
+    expect(screen.queryByText("What stays local?")).not.toBeInTheDocument();
     expect(screen.queryByText(/replace-me|sk-/)).not.toBeInTheDocument();
   });
 
   it("allows the status to be refreshed", async () => {
     render(<SettingsPanel />);
-    await screen.findByText("All local services operational");
+    await screen.findByText("API connected");
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
 
