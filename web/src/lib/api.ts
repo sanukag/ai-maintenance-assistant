@@ -51,12 +51,62 @@ export type AnswerCitation = {
 };
 
 export type GroundedAnswer = {
+  conversation_id: string;
   question: string;
   answerable: boolean;
   answer: string;
   citations: AnswerCitation[];
   model: string;
   usage: { input_tokens: number; output_tokens: number };
+};
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+};
+
+export type ConversationList = {
+  items: ConversationSummary[];
+  limit: number;
+  offset: number;
+};
+
+export type ConversationCitation = {
+  source_id: string;
+  score: number;
+  document_id: string;
+  document_title: string;
+  original_filename: string;
+  chunk_id: string;
+  chunk_sequence: number;
+  parent_context_id: string | null;
+  excerpt: string;
+  page_start: number | null;
+  page_end: number | null;
+  headings: string[];
+  line_start: number | null;
+  line_end: number | null;
+};
+
+export type ConversationMessage = {
+  id: string;
+  sequence: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  scope_document_id: string | null;
+  answerable: boolean | null;
+  model: string | null;
+  usage: { input_tokens: number; output_tokens: number } | null;
+  citations: ConversationCitation[];
+};
+
+export type ConversationDetail = {
+  conversation: ConversationSummary;
+  messages: ConversationMessage[];
 };
 
 export type ApiFailure = {
@@ -81,7 +131,7 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function sourceLocation(citation: AnswerCitation): string {
+export function sourceLocation(citation: Pick<AnswerCitation, "page_start" | "page_end" | "headings" | "line_start" | "line_end" | "chunk_sequence">): string {
   if (citation.page_start !== null) {
     return citation.page_end && citation.page_end !== citation.page_start
       ? `Pages ${citation.page_start}–${citation.page_end}`

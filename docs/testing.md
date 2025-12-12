@@ -24,6 +24,9 @@ The project tests ingestion at three levels:
 - Grounded-answer tests exercise evidence retrieval, source labelling, typed
   Responses API calls, insufficient-evidence handling and rejection of missing,
   duplicated, mismatched or invented citations.
+- Conversation-history tests cover schema migration, atomic message pairs,
+  ordered continuation, citation snapshots, pagination, missing threads,
+  deletion and the worker-facing reopen/follow-up flow.
 - Frontend component tests exercise the worker question flow, verified source
   presentation, manual upload, lifecycle confirmations, revision installation,
   library status and the developer settings page with deterministic responses.

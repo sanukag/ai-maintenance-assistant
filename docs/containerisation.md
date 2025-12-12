@@ -106,10 +106,11 @@ The `maintenance-data` named volume contains:
 
 - the SQLite database;
 - managed copies of ingested documents;
-- extracted chunks and stored vectors.
+- extracted chunks and stored vectors; and
+- complete conversation and citation history.
 
-Answers are generated per request and are not persisted in this initial
-version.
+Successful answers and their user questions are retained as atomic message
+pairs. Provider failures are not stored as incomplete exchanges.
 
 Rebuilding the image, restarting the service or running the following command
 does not delete the volume:

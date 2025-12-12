@@ -47,6 +47,9 @@ from OCR and requires `OPENAI_API_KEY`.
 | `DELETE` | `/documents/{document_id}` | Permanently remove a manual and its data |
 | `POST` | `/search` | Search embedded chunks and return source locations |
 | `POST` | `/answers` | Generate a grounded answer with verified citations |
+| `GET` | `/conversations` | List saved conversations from newest to oldest |
+| `GET` | `/conversations/{conversation_id}` | Reopen every message and citation in a conversation |
+| `DELETE` | `/conversations/{conversation_id}` | Permanently delete a conversation and its messages |
 
 Local storage paths and document content hashes are deliberately excluded from
 responses.
@@ -149,6 +152,7 @@ model may use only those contexts. A successful response has this shape:
 
 ```json
 {
+  "conversation_id": "...",
   "question": "How do I isolate the pump?",
   "answerable": true,
   "answer": "Disconnect and lock out the supply [S1].",
@@ -179,6 +183,25 @@ answer service verifies that inline markers and structured citation IDs match
 selected evidence before returning them. Insufficient evidence returns HTTP `200`
 with `answerable: false`, a stable explanation, no citations and no invented
 procedure. Provider failures or unverifiable output return HTTP `502`.
+
+The returned `conversation_id` identifies the locally stored exchange. Supply
+it with the next question to continue the same thread:
+
+```bash
+curl -X POST http://127.0.0.1:8000/answers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question":"What should I inspect afterwards?",
+    "conversation_id":"<conversation-id>"
+  }'
+```
+
+`GET /conversations` lists saved threads with pagination, and
+`GET /conversations/{conversation_id}` returns every ordered user and assistant
+message with citation snapshots. `DELETE /conversations/{conversation_id}`
+permanently removes that thread. Successful answers are stored atomically as a
+pair, so provider failures do not leave incomplete conversations. A missing
+conversation returns HTTP `404` before the answer provider is invoked.
 
 `/answers` returns HTTP `503` with `answers_disabled` unless both an embedding
 provider and an answer provider are enabled. The OpenAI answer provider defaults

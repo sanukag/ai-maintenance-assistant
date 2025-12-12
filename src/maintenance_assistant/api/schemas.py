@@ -7,6 +7,12 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 from maintenance_assistant.answering import AnswerCitation, GroundedAnswer
+from maintenance_assistant.conversations import (
+    Conversation,
+    ConversationCitation,
+    ConversationDetail,
+    ConversationMessage,
+)
 from maintenance_assistant.ingestion import (
     DocumentLifecycleStatus,
     IngestionResult,
@@ -285,6 +291,7 @@ class AnswerRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2_000)
     max_sources: int = Field(default=5, ge=1, le=10)
     document_id: str | None = Field(default=None, min_length=1)
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=100)
 
     @field_validator("question")
     @classmethod
@@ -345,6 +352,7 @@ class AnswerUsageResponse(BaseModel):
 class AnswerResponse(BaseModel):
     """A grounded answer and its validated, traceable citations."""
 
+    conversation_id: str
     question: str
     answerable: bool
     answer: str
@@ -353,10 +361,15 @@ class AnswerResponse(BaseModel):
     usage: AnswerUsageResponse
 
     @classmethod
-    def from_answer(cls, answer: GroundedAnswer) -> AnswerResponse:
+    def from_answer(
+        cls,
+        answer: GroundedAnswer,
+        conversation_id: str,
+    ) -> AnswerResponse:
         """Build an HTTP response from a validated grounded answer."""
 
         return cls(
+            conversation_id=conversation_id,
             question=answer.question,
             answerable=answer.answerable,
             answer=answer.answer,
@@ -369,4 +382,139 @@ class AnswerResponse(BaseModel):
                 input_tokens=answer.input_tokens,
                 output_tokens=answer.output_tokens,
             ),
+        )
+
+
+class ConversationSummaryResponse(BaseModel):
+    """Conversation metadata for the history list."""
+
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    message_count: int
+
+    @classmethod
+    def from_conversation(
+        cls,
+        conversation: Conversation,
+    ) -> ConversationSummaryResponse:
+        return cls(
+            id=conversation.id,
+            title=conversation.title,
+            created_at=conversation.created_at,
+            updated_at=conversation.updated_at,
+            message_count=conversation.message_count,
+        )
+
+
+class ConversationListResponse(BaseModel):
+    """A page of locally stored conversations."""
+
+    items: list[ConversationSummaryResponse]
+    limit: int
+    offset: int
+
+
+class ConversationCitationResponse(BaseModel):
+    """A citation snapshot retained with an earlier assistant message."""
+
+    source_id: str
+    score: float
+    document_id: str
+    document_title: str
+    original_filename: str
+    chunk_id: str
+    chunk_sequence: int
+    parent_context_id: str | None
+    excerpt: str
+    page_start: int | None
+    page_end: int | None
+    headings: list[str]
+    line_start: int | None
+    line_end: int | None
+
+    @classmethod
+    def from_citation(
+        cls,
+        citation: ConversationCitation,
+    ) -> ConversationCitationResponse:
+        return cls(
+            source_id=citation.source_id,
+            score=citation.score,
+            document_id=citation.document_id,
+            document_title=citation.document_title,
+            original_filename=citation.original_filename,
+            chunk_id=citation.chunk_id,
+            chunk_sequence=citation.chunk_sequence,
+            parent_context_id=citation.parent_context_id,
+            excerpt=citation.excerpt,
+            page_start=citation.page_start,
+            page_end=citation.page_end,
+            headings=list(citation.headings),
+            line_start=citation.line_start,
+            line_end=citation.line_end,
+        )
+
+
+class ConversationMessageResponse(BaseModel):
+    """One stored user or assistant message."""
+
+    id: str
+    sequence: int
+    role: str
+    content: str
+    created_at: datetime
+    scope_document_id: str | None
+    answerable: bool | None
+    model: str | None
+    usage: AnswerUsageResponse | None
+    citations: list[ConversationCitationResponse]
+
+    @classmethod
+    def from_message(
+        cls,
+        message: ConversationMessage,
+    ) -> ConversationMessageResponse:
+        usage = (
+            AnswerUsageResponse(
+                input_tokens=message.input_tokens or 0,
+                output_tokens=message.output_tokens or 0,
+            )
+            if message.role.value == "assistant"
+            else None
+        )
+        return cls(
+            id=message.id,
+            sequence=message.sequence,
+            role=message.role.value,
+            content=message.content,
+            created_at=message.created_at,
+            scope_document_id=message.scope_document_id,
+            answerable=message.answerable,
+            model=message.model,
+            usage=usage,
+            citations=[
+                ConversationCitationResponse.from_citation(citation)
+                for citation in message.citations
+            ],
+        )
+
+
+class ConversationResponse(BaseModel):
+    """A complete conversation with every ordered message."""
+
+    conversation: ConversationSummaryResponse
+    messages: list[ConversationMessageResponse]
+
+    @classmethod
+    def from_detail(cls, detail: ConversationDetail) -> ConversationResponse:
+        return cls(
+            conversation=ConversationSummaryResponse.from_conversation(
+                detail.conversation
+            ),
+            messages=[
+                ConversationMessageResponse.from_message(message)
+                for message in detail.messages
+            ],
         )

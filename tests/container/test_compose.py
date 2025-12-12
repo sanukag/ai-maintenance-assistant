@@ -108,6 +108,7 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
         assert health["ocr"] == "available"
         assert health["ocr_engine"] == "tesseract"
         assert health["visual_analysis"] == "disabled"
+        assert _json_request(f"{base_url}/conversations")["items"] == []
         assert "Ask your manuals" in _text_request(web_url)
         assert _json_request(f"{web_url}/api/backend/health")["status"] == "ok"
 
@@ -165,6 +166,7 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
         _compose(*compose, "restart", "api", environment=environment)
         _wait_until_healthy(base_url)
         documents = _json_request(f"{base_url}/documents")
+        assert _json_request(f"{base_url}/conversations")["items"] == []
         assert [item["id"] for item in documents["items"]] == [
             current_document_id,
             first_document_id,

@@ -159,6 +159,19 @@ contains the matching document, child retrieval anchor, parent evidence excerpt
 and available page, heading or line range. The application refuses to return an answer when the
 provider reports insufficient evidence or produces unverifiable citations.
 
+### Continue earlier conversations
+
+Every successful grounded-answer exchange is stored locally in SQLite as an
+ordered user message and assistant response. The worker interface lists earlier
+conversations, reopens their complete message and citation history, continues
+the selected thread, starts a clean conversation or permanently deletes one.
+
+Conversation history is retained by the same local data volume as manuals and
+vectors. It is not automatically sent back to the answer model or used as
+hidden retrieval context. See
+[`docs/conversation-history.md`](docs/conversation-history.md) for the storage,
+API, privacy and lifecycle design.
+
 ## Run the application API
 
 Start the local HTTP API after installing the project:
@@ -192,8 +205,8 @@ docker compose up --build --wait
 
 The worker interface is available at `http://127.0.0.1:3000`. The API remains
 available at `http://127.0.0.1:8000`, including its interactive documentation at
-`/docs`. Compose keeps documents, SQLite metadata and vectors in a named volume
-when the containers are recreated.
+`/docs`. Compose keeps documents, SQLite metadata, vectors and conversation
+history in a named volume when the containers are recreated.
 
 Use a local `.env` file to change `AMA_API_PORT` or enable embeddings. Stop the
 service without deleting its stored data with:
@@ -214,6 +227,8 @@ for the embedding and retrieval design. The HTTP routes and examples are in
 [`docs/application-api.md`](docs/application-api.md). Grounding, citation
 validation and current limitations are described in
 [`docs/grounded-answers.md`](docs/grounded-answers.md). See
+[`docs/conversation-history.md`](docs/conversation-history.md) for durable local
+message history. See
 [`docs/web-interface.md`](docs/web-interface.md) for the worker experience and
 frontend architecture, and [`docs/manual-lifecycle.md`](docs/manual-lifecycle.md)
 for revision, archive and deletion guarantees.

@@ -115,6 +115,8 @@ a stable local refusal with no citations.
   rankings with weighted reciprocal rank fusion.
 - `maintenance_assistant.answering` owns evidence labelling, the real OpenAI
   Responses API provider and citation validation.
+- `maintenance_assistant.conversations` atomically stores complete worker and
+  assistant exchanges, citation snapshots and conversation lifecycle operations.
 - `maintenance_assistant.api` owns HTTP validation and response models while
   delegating ingestion, persistence and retrieval to the domain services.
 - `maintenance_assistant.cli` provides the first runnable interface to the
@@ -133,6 +135,10 @@ The web image runs the production Next.js standalone server. Compose connects
 the web server to FastAPI on its internal network, sets the API data directory
 to `/app/data` and mounts a named volume there so both processes remain
 disposable while local documents and SQLite state persist.
+
+Conversation history shares this SQLite database. Schema version 7 adds
+`conversations` and ordered `conversation_messages`; deleting a conversation
+cascades to its messages without affecting manuals or vectors.
 
 The initial container is deliberately bound to the host loopback interface.
 Containerisation does not add authentication or make the API safe to expose to
