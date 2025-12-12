@@ -5,7 +5,9 @@ import pytest
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion import IngestionService, LocalDocumentStore
 from maintenance_assistant.retrieval import HybridSearchService, VectorSearchService
-from tests.fakes import KeywordEmbeddingProvider
+from maintenance_assistant.vision import VisualAnalysis, VisualType
+from tests.fakes import FixedVisualAnalysisProvider, KeywordEmbeddingProvider
+from tests.ingestion.pdf_factory import write_diagram_pdf
 
 
 def test_vector_search_embeds_query_and_ranks_local_chunks(tmp_path: Path) -> None:
@@ -107,6 +109,43 @@ def test_hybrid_search_can_run_with_text_ranking_only(tmp_path: Path) -> None:
     assert result.lexical_score is not None
     assert result.score == pytest.approx(1.0)
     assert provider.calls == []
+
+
+def test_hybrid_search_retrieves_page_cited_visual_meaning(tmp_path: Path) -> None:
+    path = tmp_path / "pump-diagram.pdf"
+    write_diagram_pdf(path)
+    settings = Settings(
+        data_directory=tmp_path / "data",
+        chunk_size_tokens=25,
+        chunk_overlap_tokens=0,
+        parent_chunk_size_tokens=80,
+    )
+    embeddings = KeywordEmbeddingProvider()
+    vision = FixedVisualAnalysisProvider(
+        VisualAnalysis(
+            visual_type=VisualType.FLOW_DIAGRAM,
+            summary="A red bypass valve labelled BV-2 bridges the pump outlet.",
+            components=("Bypass valve BV-2",),
+            relationships=("BV-2 connects across the pump outlet",),
+        )
+    )
+    document = IngestionService(
+        settings,
+        embedding_provider=embeddings,
+        visual_analysis_provider=vision,
+    ).ingest(path).document
+    search = HybridSearchService(
+        LocalDocumentStore(settings.data_directory),
+        embeddings,
+    )
+
+    result = search.search("Where is BV-2 shown?", limit=1)[0]
+
+    assert result.document.id == document.id
+    assert "BV-2" in result.chunk.text
+    assert result.chunk.location.page_start == 1
+    assert result.chunk.location.headings == ("Visual analysis: flow diagram",)
+    assert "text" in result.retrieval_methods
 
 
 @pytest.mark.parametrize(

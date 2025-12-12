@@ -1,6 +1,6 @@
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -11,8 +11,17 @@ from maintenance_assistant.ingestion import (
     extract_document,
     validate_document,
 )
-from tests.fakes import FixedOCRProvider
-from tests.ingestion.pdf_factory import write_scanned_image, write_scanned_pdf
+from maintenance_assistant.vision import (
+    VisualAnalysisError,
+    VisualAnalysisTimeoutError,
+)
+from tests.fakes import FixedOCRProvider, FixedVisualAnalysisProvider
+from tests.ingestion.pdf_factory import (
+    write_diagram_pdf,
+    write_scanned_diagram_pdf,
+    write_scanned_image,
+    write_scanned_pdf,
+)
 
 
 def test_extract_plain_text_with_line_location(tmp_path: Path) -> None:
@@ -195,6 +204,139 @@ def test_extract_scanned_image_uses_local_ocr(tmp_path: Path) -> None:
     assert extracted.segments[0].text == "CHECK MOTOR ROTATION"
     assert extracted.page_count == 1
     assert extracted.extractor_name == "test-ocr"
+
+
+def test_extract_digital_pdf_adds_page_cited_visual_analysis(tmp_path: Path) -> None:
+    path = tmp_path / "pump-diagram.pdf"
+    write_diagram_pdf(path)
+    vision = FixedVisualAnalysisProvider()
+
+    extracted = extract_document(
+        validate_document(path, Settings()),
+        visual_analysis_provider=vision,
+        visual_analysis_render_dpi=150,
+    )
+
+    assert len(vision.calls) == 1
+    assert [segment.location.page_number for segment in extracted.segments] == [1, 1]
+    assert extracted.segments[0].text.startswith("Pump flow schematic")
+    assert "Pump P1" in extracted.segments[1].text
+    assert extracted.segments[1].location.heading == (
+        "Visual analysis: flow diagram"
+    )
+    assert extracted.extractor_name == "pypdf+test-vision"
+    assert "test-vision-model" in extracted.extractor_version
+
+
+def test_extract_scanned_pdf_combines_ocr_and_visual_meaning(tmp_path: Path) -> None:
+    path = tmp_path / "scanned-diagram.pdf"
+    write_scanned_diagram_pdf(path)
+    ocr = FixedOCRProvider("P1 -> V1")
+    vision = FixedVisualAnalysisProvider()
+
+    extracted = extract_document(
+        validate_document(path, Settings()),
+        ocr_provider=ocr,
+        visual_analysis_provider=vision,
+    )
+
+    assert [segment.location.page_number for segment in extracted.segments] == [1, 1]
+    assert extracted.segments[0].text == "P1 -> V1"
+    assert "Flow runs from Pump P1 through valve V1" in extracted.segments[1].text
+    assert extracted.extractor_name == "pypdf+test-ocr+test-vision"
+    assert len(ocr.calls) == 1
+    assert len(vision.calls) == 1
+
+
+def test_extract_image_can_use_visual_analysis_without_ocr(tmp_path: Path) -> None:
+    path = tmp_path / "diagram.png"
+    write_scanned_image(path, "P1 -> V1")
+    vision = FixedVisualAnalysisProvider()
+
+    extracted = extract_document(
+        validate_document(path, Settings()),
+        visual_analysis_provider=vision,
+    )
+
+    assert len(extracted.segments) == 1
+    assert extracted.segments[0].location.page_number == 1
+    assert "Visual analysis (flow diagram)" in extracted.segments[0].text
+    assert extracted.extractor_name == "test-vision"
+
+
+def test_extract_visual_analysis_filters_plain_pages_and_requires_content(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "plain.png"
+    write_scanned_image(path, "Plain body text")
+    vision = FixedVisualAnalysisProvider(analyses=[None])
+
+    with pytest.raises(IngestionError) as captured:
+        extract_document(
+            validate_document(path, Settings()),
+            visual_analysis_provider=vision,
+        )
+
+    assert captured.value.code is IngestionErrorCode.NO_EXTRACTABLE_TEXT
+
+
+def test_extract_pdf_enforces_visual_page_and_pixel_limits(tmp_path: Path) -> None:
+    path = tmp_path / "pump-diagram.pdf"
+    write_diagram_pdf(path)
+    vision = FixedVisualAnalysisProvider()
+
+    with pytest.raises(IngestionError) as pages:
+        extract_document(
+            validate_document(path, Settings()),
+            visual_analysis_provider=vision,
+            visual_analysis_max_pages=0,
+        )
+    assert pages.value.code is IngestionErrorCode.VISUAL_ANALYSIS_FAILED
+
+    with pytest.raises(IngestionError) as pixels:
+        extract_document(
+            validate_document(path, Settings()),
+            visual_analysis_provider=vision,
+            visual_analysis_max_image_pixels=100,
+        )
+    assert pixels.value.code is IngestionErrorCode.VISUAL_ANALYSIS_FAILED
+
+
+def test_extract_maps_unavailable_failed_and_timed_out_visual_analysis(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pump-diagram.pdf"
+    write_diagram_pdf(path)
+
+    unavailable = FixedVisualAnalysisProvider()
+    unavailable.available = False
+    with pytest.raises(IngestionError) as unavailable_error:
+        extract_document(
+            validate_document(path, Settings()),
+            visual_analysis_provider=unavailable,
+        )
+    assert unavailable_error.value.code is (
+        IngestionErrorCode.VISUAL_ANALYSIS_UNAVAILABLE
+    )
+
+    for provider_error, expected in (
+        (
+            VisualAnalysisError("provider failed"),
+            IngestionErrorCode.VISUAL_ANALYSIS_FAILED,
+        ),
+        (
+            VisualAnalysisTimeoutError("provider timed out"),
+            IngestionErrorCode.VISUAL_ANALYSIS_TIMED_OUT,
+        ),
+    ):
+        provider = FixedVisualAnalysisProvider()
+        provider.analyse_image = Mock(side_effect=provider_error)
+        with pytest.raises(IngestionError) as captured:
+            extract_document(
+                validate_document(path, Settings()),
+                visual_analysis_provider=provider,
+            )
+        assert captured.value.code is expected
 
 
 def test_extract_text_rejects_non_utf8_content(tmp_path: Path) -> None:

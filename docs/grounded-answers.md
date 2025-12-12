@@ -21,6 +21,11 @@ For each `POST /answers` request, the application:
    evidence excerpt supplied to the model, with available page, heading or line
    locations.
 
+When visual analysis was enabled during ingestion, those sources can include a
+page-cited model description of a diagram or image. The citation points back to
+the original page and is labelled with a heading such as `Visual analysis: flow
+diagram`, so workers can distinguish visual interpretation from extracted text.
+
 Vector search always filters the joined document record to `current`. A
 superseded or archived manual therefore cannot be selected even when its exact
 document identifier is supplied.
@@ -52,6 +57,10 @@ These controls validate provenance, not the real-world correctness of the
 source manual. They also cannot prove that every sentence is semantically
 entailed by its excerpt. Maintenance answers should still be checked against the
 original approved documentation and site safety procedures.
+
+This is especially important for visual evidence: answer citation validation
+proves which stored description was retrieved, but cannot prove that the earlier
+vision model interpreted the source diagram correctly.
 
 ## Configuration
 

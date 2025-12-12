@@ -66,10 +66,24 @@ AMA_ANSWER_PROVIDER=openai
 OPENAI_API_KEY=your-project-api-key
 ```
 
+Image and diagram understanding is also disabled by default because it sends a
+rendered image of every PDF page, or an uploaded PNG/JPEG document, to OpenAI.
+Enable the complete visual retrieval path with:
+
+```env
+AMA_VISUAL_ANALYSIS_PROVIDER=openai
+AMA_EMBEDDING_PROVIDER=openai
+OPENAI_API_KEY=your-project-api-key
+```
+
+`AMA_VISUAL_ANALYSIS_DETAIL=high` provides bounded high-fidelity processing for
+diagram labels. The page count, render resolution, rendered-pixel limit, request
+timeout and output-token limit are configurable through `.env.example`.
+
 `AMA_ANSWER_MODEL` defaults to `gpt-5.6-terra`, and
 `AMA_ANSWER_MAX_OUTPUT_TOKENS` defaults to `1000`. The same runtime key is used
-for embeddings and answers. Restart or recreate the service after changing
-provider settings:
+for visual analysis, embeddings and answers. Restart or recreate the service
+after changing provider settings:
 
 ```bash
 docker compose up --build --detach --wait

@@ -25,6 +25,8 @@ const health = {
   ocr: "available" as const,
   ocr_engine: "tesseract",
   ocr_version: "5.5.0",
+  visual_analysis: "available" as const,
+  visual_analysis_model: "test-vision",
   embeddings: "enabled",
   embedding_model: "test-embedding",
   answers: "enabled",

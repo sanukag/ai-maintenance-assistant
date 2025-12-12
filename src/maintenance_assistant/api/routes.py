@@ -36,6 +36,7 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
     services.store.initialise()
     provider = services.embedding_provider
     ocr_provider = services.ocr_provider
+    visual_analysis_provider = services.visual_analysis_provider
     answer_provider = services.answer_provider
     return HealthResponse(
         status="ok",
@@ -49,6 +50,18 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
         ),
         ocr_engine=ocr_provider.name if ocr_provider is not None else None,
         ocr_version=ocr_provider.version if ocr_provider is not None else None,
+        visual_analysis=(
+            "disabled"
+            if visual_analysis_provider is None
+            else "available"
+            if visual_analysis_provider.available
+            else "unavailable"
+        ),
+        visual_analysis_model=(
+            visual_analysis_provider.model
+            if visual_analysis_provider is not None
+            else None
+        ),
         embeddings="enabled" if provider is not None else "disabled",
         embedding_model=provider.model if provider is not None else None,
         answers="enabled" if services.answers is not None else "disabled",

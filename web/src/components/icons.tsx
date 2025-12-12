@@ -7,6 +7,7 @@ export type IconName =
   | "send"
   | "upload"
   | "file"
+  | "image"
   | "check"
   | "chevron"
   | "shield"
@@ -41,6 +42,7 @@ export function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGEle
     send: <><path d="m22 2-7 20-4-9-9-4 20-7Z" /><path d="M22 2 11 13" /></>,
     upload: <><path d="M12 16V3M7 8l5-5 5 5" /><path d="M20 15v5H4v-5" /></>,
     file: <><path d="M6 2h8l4 4v16H6z" /><path d="M14 2v5h5M9 12h6M9 16h6" /></>,
+    image: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 4.5-4.5 3 3 2.5-2.5 6 6" /></>,
     check: <path d="m5 12 4 4L19 6" />,
     chevron: <path d="m9 18 6-6-6-6" />,
     shield: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></>,

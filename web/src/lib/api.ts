@@ -4,6 +4,8 @@ export type Health = {
   ocr: "available" | "unavailable" | "disabled";
   ocr_engine: string | null;
   ocr_version: string | null;
+  visual_analysis: "available" | "unavailable" | "disabled";
+  visual_analysis_model: string | null;
   embeddings: "enabled" | "disabled";
   embedding_model: string | null;
   answers: "enabled" | "disabled";

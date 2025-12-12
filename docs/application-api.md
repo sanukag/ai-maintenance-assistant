@@ -28,11 +28,15 @@ search tools. For example, start it with OpenAI embeddings enabled by exporting
 require `AMA_ANSWER_PROVIDER=openai`. Provider settings are fixed for the
 lifetime of the process, so restart the API after changing them.
 
+Set `AMA_VISUAL_ANALYSIS_PROVIDER=openai` to enrich uploaded images and every
+rendered PDF page with maintenance-relevant visual meaning. This is independent
+from OCR and requires `OPENAI_API_KEY`.
+
 ## Routes
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | Check storage, OCR and provider availability |
+| `GET` | `/health` | Check storage, OCR, visual analysis and provider availability |
 | `POST` | `/documents` | Upload and ingest one PDF, image, text or Markdown document |
 | `GET` | `/documents` | List metadata with pagination and lifecycle filtering |
 | `GET` | `/documents/{document_id}` | Retrieve one document's metadata |
@@ -65,6 +69,12 @@ Scanned PDF pages and `PNG`/`JPEG` images are recognised with the configured
 local Tesseract engine. OCR dependency failures return HTTP `503`, per-page
 timeouts return HTTP `504`, and invalid or unrecognisable scans use stable
 ingestion error codes.
+
+When visual analysis is enabled, digital and scanned PDF pages plus uploaded
+document images are analysed for equipment photographs, diagrams, drawings,
+charts and tables. Provider failures return HTTP `502`, provider timeouts return
+HTTP `504`, and unavailable configuration returns HTTP `503`. Successful visual
+descriptions are stored as page-cited chunks and embedded with ordinary text.
 
 A new document returns HTTP `201` and `status: completed`. Submitting identical
 content returns HTTP `200`, `status: already_exists` and the existing document
@@ -101,9 +111,9 @@ curl http://127.0.0.1:8000/documents/<document-id>/revisions
 ```
 
 Only current manuals contribute to search and grounded answers. Archive a
-retained copy with `POST /documents/<id>/archive`. Regenerate all of a manual's
-the token-aware child hierarchy and vectors with the active embedding provider using
-`POST /documents/<id>/reindex`.
+retained copy with `POST /documents/<id>/archive`. Regenerate a manual's
+token-aware hierarchy, visual descriptions and vectors with the active
+providers using `POST /documents/<id>/reindex`.
 
 Permanent deletion uses `DELETE /documents/<id>` and removes the managed source
 file, metadata, chunks and vectors. The worker interface requires an explicit

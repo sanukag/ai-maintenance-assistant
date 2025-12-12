@@ -5,6 +5,7 @@ from pathlib import Path
 
 from maintenance_assistant.answering import GeneratedAnswer, GroundingSource
 from maintenance_assistant.embeddings import EmbeddingBatch
+from maintenance_assistant.vision import VisualAnalysis, VisualType
 
 
 class FixedOCRProvider:
@@ -29,6 +30,39 @@ class FixedOCRProvider:
         assert path.is_file()
         self.calls.append((path, language, dpi, timeout_seconds))
         return self.text
+
+
+class FixedVisualAnalysisProvider:
+    """Return deterministic visual meaning while recording rendered pages."""
+
+    name = "test-vision"
+    model = "test-vision-model"
+    available = True
+
+    def __init__(
+        self,
+        analysis: VisualAnalysis | None = None,
+        *,
+        analyses: Sequence[VisualAnalysis | None] | None = None,
+    ) -> None:
+        self.analysis = analysis or VisualAnalysis(
+            visual_type=VisualType.FLOW_DIAGRAM,
+            summary="A pump feeds isolation valve V1 before the outlet.",
+            components=("Pump P1", "Isolation valve V1"),
+            relationships=("Flow runs from Pump P1 through valve V1",),
+        )
+        self.analyses = list(analyses) if analyses is not None else None
+        self.calls: list[tuple[str, tuple[int, int]]] = []
+
+    def analyse_image(self, path: Path) -> VisualAnalysis | None:
+        from PIL import Image
+
+        assert path.is_file()
+        with Image.open(path) as image:
+            self.calls.append((path.name, image.size))
+        if self.analyses is not None:
+            return self.analyses.pop(0)
+        return self.analysis
 
 
 class KeywordEmbeddingProvider:

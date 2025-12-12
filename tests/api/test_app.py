@@ -10,8 +10,13 @@ from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.routes import _safe_filename
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion import IngestionErrorCode
-from tests.fakes import FixedAnswerProvider, FixedOCRProvider, KeywordEmbeddingProvider
-from tests.ingestion.pdf_factory import write_scanned_image
+from tests.fakes import (
+    FixedAnswerProvider,
+    FixedOCRProvider,
+    FixedVisualAnalysisProvider,
+    KeywordEmbeddingProvider,
+)
+from tests.ingestion.pdf_factory import write_diagram_pdf, write_scanned_image
 
 
 def _settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -41,6 +46,8 @@ def test_health_reports_local_services(tmp_path: Path) -> None:
         "ocr": "disabled",
         "ocr_engine": None,
         "ocr_version": None,
+        "visual_analysis": "disabled",
+        "visual_analysis_model": None,
         "embeddings": "disabled",
         "embedding_model": None,
         "answers": "disabled",
@@ -72,6 +79,44 @@ def test_upload_scanned_image_reports_local_ocr_metadata(tmp_path: Path) -> None
     assert uploaded.json()["document"]["format"] == "image"
     assert uploaded.json()["document"]["extractor_name"] == "test-ocr"
     assert uploaded.json()["document"]["chunk_count"] == 1
+
+
+def test_upload_diagram_reports_visual_analysis_and_embeds_description(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pump-diagram.pdf"
+    write_diagram_pdf(path)
+    vision = FixedVisualAnalysisProvider()
+    embeddings = KeywordEmbeddingProvider()
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=embeddings,
+        visual_analysis_provider=vision,
+    )
+
+    with TestClient(application) as client:
+        health = client.get("/health")
+        uploaded = client.post(
+            "/documents",
+            files={"file": (path.name, path.read_bytes(), "application/pdf")},
+        )
+        searched = client.post(
+            "/search",
+            json={"query": "Relationships and flow", "limit": 10},
+        )
+
+    assert health.json()["visual_analysis"] == "available"
+    assert health.json()["visual_analysis_model"] == "test-vision-model"
+    assert uploaded.status_code == 201
+    assert uploaded.json()["document"]["extractor_name"] == (
+        "pypdf+test-vision"
+    )
+    assert uploaded.json()["embeddings"]["chunk_count"] >= 1
+    assert searched.status_code == 200
+    assert any(
+        "Visual analysis" in item["chunk"]["text"]
+        for item in searched.json()["results"]
+    )
 
 
 def test_upload_browse_and_search_document(tmp_path: Path) -> None:
@@ -464,6 +509,9 @@ def test_safe_filename_requires_a_real_name(filename: str | None) -> None:
         (IngestionErrorCode.OCR_UNAVAILABLE, 503),
         (IngestionErrorCode.OCR_TIMED_OUT, 504),
         (IngestionErrorCode.OCR_FAILED, 422),
+        (IngestionErrorCode.VISUAL_ANALYSIS_UNAVAILABLE, 503),
+        (IngestionErrorCode.VISUAL_ANALYSIS_TIMED_OUT, 504),
+        (IngestionErrorCode.VISUAL_ANALYSIS_FAILED, 502),
         (IngestionErrorCode.EMBEDDING_FAILED, 502),
         (IngestionErrorCode.STORAGE_FAILED, 500),
         (IngestionErrorCode.INVALID_DOCUMENT, 422),

@@ -26,10 +26,15 @@ from maintenance_assistant.ingestion import (
     LocalDocumentStore,
 )
 from maintenance_assistant.ocr import OCRProvider, create_ocr_provider
+from maintenance_assistant.vision import (
+    VisualAnalysisProvider,
+    create_visual_analysis_provider,
+)
 
 _CONFIGURED_EMBEDDING_PROVIDER = object()
 _CONFIGURED_ANSWER_PROVIDER = object()
 _CONFIGURED_OCR_PROVIDER = object()
+_CONFIGURED_VISUAL_ANALYSIS_PROVIDER = object()
 
 
 def create_app(
@@ -38,6 +43,9 @@ def create_app(
     embedding_provider: EmbeddingProvider | None | object = _CONFIGURED_EMBEDDING_PROVIDER,
     answer_provider: AnswerProvider | None | object = _CONFIGURED_ANSWER_PROVIDER,
     ocr_provider: OCRProvider | None | object = _CONFIGURED_OCR_PROVIDER,
+    visual_analysis_provider: VisualAnalysisProvider | None | object = (
+        _CONFIGURED_VISUAL_ANALYSIS_PROVIDER
+    ),
     store: LocalDocumentStore | None = None,
 ) -> FastAPI:
     """Create an API with production defaults or explicitly injected services."""
@@ -58,6 +66,11 @@ def create_app(
         if ocr_provider is _CONFIGURED_OCR_PROVIDER
         else cast(OCRProvider | None, ocr_provider)
     )
+    configured_visual_analysis_provider = (
+        create_visual_analysis_provider(configured_settings)
+        if visual_analysis_provider is _CONFIGURED_VISUAL_ANALYSIS_PROVIDER
+        else cast(VisualAnalysisProvider | None, visual_analysis_provider)
+    )
     application = FastAPI(
         title="AI Maintenance Assistant API",
         version="0.1.0",
@@ -67,11 +80,12 @@ def create_app(
         ),
     )
     application.state.services = build_services(
-        configured_settings,
-        configured_embedding_provider,
-        configured_answer_provider,
-        store,
-        configured_ocr_provider,
+        settings=configured_settings,
+        embedding_provider=configured_embedding_provider,
+        answer_provider=configured_answer_provider,
+        store=store,
+        ocr_provider=configured_ocr_provider,
+        visual_analysis_provider=configured_visual_analysis_provider,
     )
     application.include_router(router)
 
@@ -123,6 +137,12 @@ def _ingestion_status(code: IngestionErrorCode) -> int:
         return 503
     if code is IngestionErrorCode.OCR_TIMED_OUT:
         return 504
+    if code is IngestionErrorCode.VISUAL_ANALYSIS_UNAVAILABLE:
+        return 503
+    if code is IngestionErrorCode.VISUAL_ANALYSIS_TIMED_OUT:
+        return 504
+    if code is IngestionErrorCode.VISUAL_ANALYSIS_FAILED:
+        return 502
     if code is IngestionErrorCode.STORAGE_FAILED:
         return 500
     return 422

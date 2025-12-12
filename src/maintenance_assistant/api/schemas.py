@@ -39,6 +39,8 @@ class HealthResponse(BaseModel):
     ocr: str
     ocr_engine: str | None
     ocr_version: str | None
+    visual_analysis: str
+    visual_analysis_model: str | None
     embeddings: str
     embedding_model: str | None
     answers: str

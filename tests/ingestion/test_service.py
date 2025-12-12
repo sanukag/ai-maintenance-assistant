@@ -12,8 +12,12 @@ from maintenance_assistant.ingestion import (
     IngestionStatus,
     LocalDocumentStore,
 )
-from tests.ingestion.pdf_factory import write_scanned_pdf, write_text_pdf
-from tests.fakes import FixedOCRProvider, KeywordEmbeddingProvider
+from tests.ingestion.pdf_factory import write_diagram_pdf, write_scanned_pdf, write_text_pdf
+from tests.fakes import (
+    FixedOCRProvider,
+    FixedVisualAnalysisProvider,
+    KeywordEmbeddingProvider,
+)
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -92,6 +96,52 @@ def test_service_can_explicitly_disable_configured_ocr(tmp_path: Path) -> None:
     service = IngestionService(_settings(tmp_path), ocr_provider=None)
 
     assert service.ocr_provider is None
+
+
+def test_service_embeds_visual_descriptions_with_source_traceability(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pump-diagram.pdf"
+    write_diagram_pdf(path)
+    settings = Settings(
+        data_directory=tmp_path / "data",
+        chunk_size_tokens=20,
+        chunk_overlap_tokens=0,
+        parent_chunk_size_tokens=60,
+    )
+    embeddings = KeywordEmbeddingProvider()
+    vision = FixedVisualAnalysisProvider()
+
+    result = IngestionService(
+        settings,
+        embedding_provider=embeddings,
+        visual_analysis_provider=vision,
+    ).ingest(path)
+
+    store = LocalDocumentStore(settings.data_directory)
+    chunks = store.list_chunks(result.document.id)
+    visual_chunks = [chunk for chunk in chunks if "Visual analysis" in chunk.text]
+    assert visual_chunks
+    assert visual_chunks[0].location.page_start == 1
+    assert visual_chunks[0].location.headings == (
+        "Visual analysis: flow diagram",
+    )
+    assert result.embedded_chunk_count == len(chunks)
+    assert any("Visual analysis" in text for batch in embeddings.calls for text in batch)
+    assert result.document.extractor_name == "pypdf+test-vision"
+
+
+def test_service_can_explicitly_disable_configured_visual_analysis(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_directory=tmp_path / "data",
+        visual_analysis_provider="openai",
+        openai_api_key="test-key",
+    )
+    service = IngestionService(settings, visual_analysis_provider=None)
+
+    assert service.visual_analysis_provider is None
 
 
 def test_service_embeds_chunks_during_ingestion(tmp_path: Path) -> None:

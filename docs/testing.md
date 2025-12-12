@@ -11,6 +11,9 @@ The project tests ingestion at three levels:
 - OCR tests cover image signatures, pixel/page limits, PDFium rendering,
   language and timeout forwarding, engine failures and locally recognised image
   documents.
+- Visual-analysis tests cover typed Responses API image input, privacy flags,
+  timeouts, malformed outputs, text-only filtering, digital and scanned PDF
+  rendering, image-only diagrams, page/pixel limits and page-cited descriptions.
 - Provider-boundary tests verify OpenAI request batching, input ordering, API
   failures, dimensions and non-finite vectors without making paid API calls.
 - Retrieval tests cover schema-version migration, float storage, missing-vector
@@ -61,10 +64,10 @@ Tests use isolated temporary directories and must not read or write the normal
 fixtures as well as one end-to-end ingestion case.
 
 Automated tests inject deterministic vectors and never require an OpenAI API
-key. They also inject deterministic answer payloads, so CI never sends questions
-or chunks to an external model. A live-provider smoke test should be run
-deliberately with a project key before release because it sends content
-externally and incurs API usage.
+key. They also inject deterministic visual descriptions and answer payloads, so
+CI never sends pages, questions or chunks to an external model. A live-provider
+smoke test should be run deliberately with a project key before release because
+it sends content externally and incurs API usage.
 
 The separate [retrieval evaluation workflow](retrieval-evaluation.md) measures
 quality against labelled maintenance questions. Its committed starter corpus is

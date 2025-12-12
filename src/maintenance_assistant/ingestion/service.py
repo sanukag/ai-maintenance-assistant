@@ -35,11 +35,16 @@ from maintenance_assistant.ingestion.normalisation import normalise_document
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
 from maintenance_assistant.ingestion.validation import validate_document
 from maintenance_assistant.ocr import OCRProvider, create_ocr_provider
+from maintenance_assistant.vision import (
+    VisualAnalysisProvider,
+    create_visual_analysis_provider,
+)
 
 if TYPE_CHECKING:
     from maintenance_assistant.embeddings import EmbeddingProvider
 
 _CONFIGURED_OCR_PROVIDER = object()
+_CONFIGURED_VISUAL_ANALYSIS_PROVIDER = object()
 
 
 class IngestionService:
@@ -51,6 +56,9 @@ class IngestionService:
         store: LocalDocumentStore | None = None,
         embedding_provider: EmbeddingProvider | None = None,
         ocr_provider: OCRProvider | None | object = _CONFIGURED_OCR_PROVIDER,
+        visual_analysis_provider: VisualAnalysisProvider | None | object = (
+            _CONFIGURED_VISUAL_ANALYSIS_PROVIDER
+        ),
     ) -> None:
         self.settings = settings
         self.store = store or LocalDocumentStore(settings.data_directory)
@@ -59,6 +67,11 @@ class IngestionService:
             create_ocr_provider(settings)
             if ocr_provider is _CONFIGURED_OCR_PROVIDER
             else cast(OCRProvider | None, ocr_provider)
+        )
+        self.visual_analysis_provider = (
+            create_visual_analysis_provider(settings)
+            if visual_analysis_provider is _CONFIGURED_VISUAL_ANALYSIS_PROVIDER
+            else cast(VisualAnalysisProvider | None, visual_analysis_provider)
         )
         self.token_counter = TiktokenCounter(settings.chunk_token_encoding)
 
@@ -252,6 +265,12 @@ class IngestionService:
             ocr_page_timeout_seconds=self.settings.ocr_page_timeout_seconds,
             ocr_max_pages=self.settings.ocr_max_pages,
             ocr_max_image_pixels=self.settings.ocr_max_image_pixels,
+            visual_analysis_provider=self.visual_analysis_provider,
+            visual_analysis_render_dpi=self.settings.visual_analysis_render_dpi,
+            visual_analysis_max_pages=self.settings.visual_analysis_max_pages,
+            visual_analysis_max_image_pixels=(
+                self.settings.visual_analysis_max_image_pixels
+            ),
         )
 
     def _embed_stored_chunks(

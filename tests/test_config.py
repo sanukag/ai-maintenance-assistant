@@ -21,6 +21,14 @@ def test_settings_use_local_defaults() -> None:
     assert settings.ocr_page_timeout_seconds == 30
     assert settings.ocr_max_pages == 100
     assert settings.ocr_max_image_pixels == 50_000_000
+    assert settings.visual_analysis_provider == "none"
+    assert settings.visual_analysis_model == "gpt-5.6-terra"
+    assert settings.visual_analysis_detail == "high"
+    assert settings.visual_analysis_render_dpi == 150
+    assert settings.visual_analysis_timeout_seconds == 60
+    assert settings.visual_analysis_max_pages == 100
+    assert settings.visual_analysis_max_image_pixels == 25_000_000
+    assert settings.visual_analysis_max_output_tokens == 1_000
     assert settings.embedding_provider == "none"
     assert settings.embedding_model == "text-embedding-3-small"
     assert settings.embedding_dimensions == 512
@@ -52,6 +60,14 @@ def test_settings_read_environment_values() -> None:
             "AMA_OCR_PAGE_TIMEOUT_SECONDS": "45",
             "AMA_OCR_MAX_PAGES": "75",
             "AMA_OCR_MAX_IMAGE_PIXELS": "25000000",
+            "AMA_VISUAL_ANALYSIS_PROVIDER": "openai",
+            "AMA_VISUAL_ANALYSIS_MODEL": "gpt-vision",
+            "AMA_VISUAL_ANALYSIS_DETAIL": "original",
+            "AMA_VISUAL_ANALYSIS_RENDER_DPI": "180",
+            "AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS": "90",
+            "AMA_VISUAL_ANALYSIS_MAX_PAGES": "60",
+            "AMA_VISUAL_ANALYSIS_MAX_IMAGE_PIXELS": "20000000",
+            "AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS": "800",
             "AMA_EMBEDDING_PROVIDER": "openai",
             "AMA_EMBEDDING_MODEL": "text-embedding-3-large",
             "AMA_EMBEDDING_DIMENSIONS": "1024",
@@ -81,6 +97,14 @@ def test_settings_read_environment_values() -> None:
     assert settings.ocr_page_timeout_seconds == 45
     assert settings.ocr_max_pages == 75
     assert settings.ocr_max_image_pixels == 25_000_000
+    assert settings.visual_analysis_provider == "openai"
+    assert settings.visual_analysis_model == "gpt-vision"
+    assert settings.visual_analysis_detail == "original"
+    assert settings.visual_analysis_render_dpi == 180
+    assert settings.visual_analysis_timeout_seconds == 90
+    assert settings.visual_analysis_max_pages == 60
+    assert settings.visual_analysis_max_image_pixels == 20_000_000
+    assert settings.visual_analysis_max_output_tokens == 800
     assert settings.embedding_provider == "openai"
     assert settings.embedding_model == "text-embedding-3-large"
     assert settings.embedding_dimensions == 1024
@@ -146,6 +170,29 @@ def test_settings_reject_invalid_ocr_configuration(
     environment: dict[str, str],
 ) -> None:
     with pytest.raises(ValueError, match="AMA_OCR"):
+        Settings.from_environment(environment)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"AMA_VISUAL_ANALYSIS_PROVIDER": "local"},
+        {"AMA_VISUAL_ANALYSIS_PROVIDER": "openai"},
+        {"AMA_VISUAL_ANALYSIS_MODEL": " "},
+        {"AMA_VISUAL_ANALYSIS_DETAIL": "maximum"},
+        {"AMA_VISUAL_ANALYSIS_RENDER_DPI": "99"},
+        {"AMA_VISUAL_ANALYSIS_RENDER_DPI": "301"},
+        {"AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS": "0"},
+        {"AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS": "601"},
+        {"AMA_VISUAL_ANALYSIS_MAX_PAGES": "0"},
+        {"AMA_VISUAL_ANALYSIS_MAX_IMAGE_PIXELS": "0"},
+        {"AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS": "5001"},
+    ],
+)
+def test_settings_reject_invalid_visual_analysis_configuration(
+    environment: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError, match="VISUAL_ANALYSIS|OPENAI_API_KEY"):
         Settings.from_environment(environment)
 
 
