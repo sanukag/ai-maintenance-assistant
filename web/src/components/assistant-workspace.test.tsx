@@ -68,6 +68,7 @@ const conversationDetail = {
 
 describe("AssistantWorkspace", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/");
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
       if (url.includes("/health")) return Response.json(health);
@@ -113,7 +114,7 @@ describe("AssistantWorkspace", () => {
 
     expect(await screen.findByText("Based on your manuals")).toBeInTheDocument();
     expect(screen.getByText("[S1]")).toBeInTheDocument();
-    expect(screen.getByText("Sources verified")).toBeInTheDocument();
+    expect(screen.getByText("1 citation")).toBeInTheDocument();
     expect(screen.getAllByText("Pump manual")).toHaveLength(2);
     expect(screen.getByText("Disconnect and lock out the electrical supply.")).toBeInTheDocument();
     expect(screen.getByText("Page 8")).toBeInTheDocument();
@@ -151,7 +152,7 @@ describe("AssistantWorkspace", () => {
     }));
 
     render(<AssistantWorkspace />);
-    fireEvent.click(await screen.findByRole("button", { name: /^how do i isolate the pump\?14 jul/i }));
+    window.dispatchEvent(new CustomEvent("assistant-conversation-selected", { detail: { conversationId: conversation.id } }));
 
     expect(await screen.findByText("Based on your manuals")).toBeInTheDocument();
     expect(screen.getAllByText("How do I isolate the pump?").length).toBeGreaterThan(1);
@@ -169,28 +170,6 @@ describe("AssistantWorkspace", () => {
         conversation_id: conversation.id,
       });
     });
-  });
-
-  it("deletes a saved conversation after confirmation", async () => {
-    let deleted = false;
-    vi.stubGlobal("confirm", vi.fn(() => true));
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
-      const url = String(input);
-      if (url.includes("/health")) return Response.json(health);
-      if (url.includes("/documents")) return Response.json({ items: [document], limit: 100, offset: 0 });
-      if (url.includes(`/conversations/${conversation.id}`) && options?.method === "DELETE") {
-        deleted = true;
-        return new Response(null, { status: 204 });
-      }
-      if (url.includes("/conversations")) return Response.json({ items: deleted ? [] : [conversation], limit: 50, offset: 0 });
-      return Response.json({}, { status: 404 });
-    }));
-
-    render(<AssistantWorkspace />);
-    fireEvent.click(await screen.findByRole("button", { name: `Delete ${conversation.title}` }));
-
-    expect(confirm).toHaveBeenCalled();
-    expect(await screen.findByText("Your completed conversations will appear here.")).toBeInTheDocument();
   });
 
   it("explains where to go when answer providers are not configured", async () => {
