@@ -2,6 +2,7 @@
 
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
+import { MetadataTagSelector } from "@/components/metadata-tag-selector";
 import {
   type DocumentList,
   type DocumentMetadata,
@@ -15,50 +16,13 @@ type Message = { tone: "success" | "error"; text: string };
 type DestructiveAction = "archive" | "delete";
 type MetadataKey = keyof DocumentMetadata;
 
-const emptyMetadata: DocumentMetadata = { brand: null, machine: null, site: null, document_type: null };
-
-function metadataValues(options: DocumentMetadata[], key: MetadataKey) {
-  return Array.from(new Set(options.map((item) => item[key]).filter((value): value is string => Boolean(value))))
-    .sort((left, right) => left.localeCompare(right));
-}
+const emptyMetadata: DocumentMetadata = { brand: [], machine: [], site: [], document_type: [] };
+const emptyMetadataOptions: MetadataOptions = { brand: [], machine: [], site: [], document_type: [] };
 
 function appendMetadata(body: FormData, metadata: DocumentMetadata) {
   for (const key of ["brand", "machine", "site", "document_type"] as const) {
-    if (metadata[key]) body.append(key, metadata[key]);
+    for (const value of metadata[key]) body.append(key, value);
   }
-}
-
-function MetadataSelector({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string | null;
-  options: string[];
-  onChange: (value: string | null) => void;
-}) {
-  const [custom, setCustom] = useState(Boolean(value && !options.includes(value)));
-  return (
-    <label className="metadata-selector">
-      <span>{label}</span>
-      <select value={custom ? "__new__" : value ?? ""} onChange={(event) => {
-        if (event.target.value === "__new__") {
-          setCustom(true);
-          onChange(null);
-        } else {
-          setCustom(false);
-          onChange(event.target.value || null);
-        }
-      }}>
-        <option value="">Not specified</option>
-        {options.map((option) => <option value={option} key={option}>{option}</option>)}
-        <option value="__new__">Add new…</option>
-      </select>
-      {custom && <input aria-label={`New ${label.toLowerCase()}`} value={value ?? ""} maxLength={100} placeholder={`Enter ${label.toLowerCase()}`} onChange={(event) => onChange(event.target.value || null)} />}
-    </label>
-  );
 }
 
 function MetadataFields({
@@ -67,7 +31,7 @@ function MetadataFields({
   onChange,
 }: {
   metadata: DocumentMetadata;
-  options: DocumentMetadata[];
+  options: MetadataOptions;
   onChange: (metadata: DocumentMetadata) => void;
 }) {
   const fields: { key: MetadataKey; label: string }[] = [
@@ -79,12 +43,12 @@ function MetadataFields({
   return (
     <div className="manual-metadata-fields">
       {fields.map((field) => (
-        <MetadataSelector
+        <MetadataTagSelector
           key={field.key}
           label={field.label}
-          value={metadata[field.key]}
-          options={metadataValues(options, field.key)}
-          onChange={(value) => onChange({ ...metadata, [field.key]: value })}
+          values={metadata[field.key]}
+          options={options[field.key]}
+          onChange={(values) => onChange({ ...metadata, [field.key]: values })}
         />
       ))}
     </div>
@@ -105,7 +69,7 @@ export function ManualLibrary() {
   const input = useRef<HTMLInputElement>(null);
   const replacementInput = useRef<HTMLInputElement>(null);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
-  const [metadataOptions, setMetadataOptions] = useState<DocumentMetadata[]>([]);
+  const [metadataOptions, setMetadataOptions] = useState<MetadataOptions>(emptyMetadataOptions);
   const [uploadMetadata, setUploadMetadata] = useState<DocumentMetadata>(emptyMetadata);
   const [replacementMetadata, setReplacementMetadata] = useState<DocumentMetadata>(emptyMetadata);
   const [metadataFormKey, setMetadataFormKey] = useState(0);
@@ -140,7 +104,7 @@ export function ManualLibrary() {
 
   async function loadMetadataOptions() {
     const response = await fetch("/api/backend/metadata/options", { cache: "no-store" });
-    setMetadataOptions((await readJson<MetadataOptions>(response)).items);
+    setMetadataOptions(await readJson<MetadataOptions>(response));
   }
 
   useEffect(() => {
@@ -152,7 +116,7 @@ export function ManualLibrary() {
       .then(([documentList, availableMetadata]) => {
         if (!active) return;
         setDocuments(documentList.items);
-        setMetadataOptions(availableMetadata.items);
+        setMetadataOptions(availableMetadata);
       })
       .catch((error: Error) => { if (active) setMessage({ tone: "error", text: error.message }); })
       .finally(() => { if (active) setLoading(false); });
@@ -339,7 +303,7 @@ export function ManualLibrary() {
               <thead><tr><th>Manual</th><th>Revision</th><th>Coverage</th><th>Added</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>{visibleDocuments.map((document) => (
                 <tr key={document.id} className={`manual-row-${document.lifecycle_status}`}>
-                  <td><span className={`document-icon document-${document.format}`}><Icon name="file" /></span><span><strong>{document.title}</strong><small>{document.original_filename} · {formatFileSize(document.size_bytes)}</small><span className="document-metadata-summary">{[document.metadata.brand, document.metadata.machine, document.metadata.site].filter(Boolean).join(" · ") || "Unclassified"}</span></span></td>
+                  <td><span className={`document-icon document-${document.format}`}><Icon name="file" /></span><span><strong>{document.title}</strong><small>{document.original_filename} · {formatFileSize(document.size_bytes)}</small><span className="document-metadata-summary">{[...document.metadata.brand, ...document.metadata.machine, ...document.metadata.site].join(" · ") || "Unclassified"}</span></span></td>
                   <td><span className="revision-chip">Rev {document.revision}</span><small>{document.format === "markdown" ? "MD" : document.format.toUpperCase()}</small></td>
                   <td><strong>{document.chunk_count}</strong> sections{document.page_count ? <small>{document.page_count} pages</small> : null}</td>
                   <td>{formatDate(document.created_at)}</td>

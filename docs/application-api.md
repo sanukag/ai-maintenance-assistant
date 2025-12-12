@@ -39,7 +39,7 @@ from OCR and requires `OPENAI_API_KEY`.
 | `GET` | `/health` | Check storage, OCR, visual analysis and provider availability |
 | `POST` | `/documents` | Upload and ingest one PDF, image, text or Markdown document |
 | `GET` | `/documents` | List metadata with pagination and lifecycle filtering |
-| `GET` | `/metadata/options` | List current equipment classifications for dropdowns |
+| `GET` | `/metadata/options` | List reusable equipment classifications for tagging controls |
 | `GET` | `/documents/{document_id}` | Retrieve one document's metadata |
 | `GET` | `/documents/{document_id}/revisions` | List retained revision history |
 | `POST` | `/documents/{document_id}/revisions` | Install a replacement revision |
@@ -60,11 +60,13 @@ responses.
 ## Upload a document
 
 Send one multipart field named `file`. Optional `brand`, `machine`, `site` and
-`document_type` fields classify the manual:
+`document_type` fields classify the manual. Repeat a field to attach more than
+one value in that category:
 
 ```bash
 curl -F "file=@./manuals/pump.pdf" \
-  -F "brand=Acme" -F "machine=P-100" -F "site=North plant" \
+  -F "brand=Acme" -F "brand=Acme Industrial" \
+  -F "machine=P-100" -F "machine=P-100 Mk II" -F "site=North plant" \
   -F "document_type=Service manual" \
   http://127.0.0.1:8000/documents
 ```
@@ -138,8 +140,10 @@ curl -X POST http://127.0.0.1:8000/search \
 ```
 
 Add `document_id`, `brand`, `machine`, `site` or `document_type` to restrict
-results. Criteria are intersected, case-insensitively, with the current-manual
-boundary. Each result
+results. Metadata fields accept either one string or an array. A document may
+match any requested value within a category, while populated categories are
+intersected case-insensitively with each other and the current-manual boundary.
+Each result
 contains its normalised hybrid score, raw semantic and lexical diagnostic
 scores, contributing `retrieval_methods`, embedding model, safe document
 metadata, child chunk, larger `parent_context` and available source location.

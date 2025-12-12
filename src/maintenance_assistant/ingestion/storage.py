@@ -233,7 +233,39 @@ CREATE INDEX IF NOT EXISTS documents_site_idx ON documents(site COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS documents_type_idx ON documents(document_type COLLATE NOCASE);
 """
 
-_CURRENT_SCHEMA_VERSION = 9
+_MIGRATION_VERSION_10 = """
+ALTER TABLE documents
+ADD COLUMN brand_values_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE documents
+ADD COLUMN machine_values_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE documents
+ADD COLUMN site_values_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE documents
+ADD COLUMN document_type_values_json TEXT NOT NULL DEFAULT '[]';
+
+CREATE TABLE IF NOT EXISTS metadata_options (
+    category TEXT NOT NULL
+        CHECK (category IN ('brand', 'machine', 'site', 'document_type')),
+    value_key TEXT NOT NULL,
+    value TEXT NOT NULL CHECK (length(value) > 0),
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (category, value_key)
+);
+
+CREATE INDEX IF NOT EXISTS metadata_options_category_value_idx
+ON metadata_options(category, value COLLATE NOCASE);
+
+UPDATE documents SET brand_values_json = json_array(brand)
+WHERE brand IS NOT NULL;
+UPDATE documents SET machine_values_json = json_array(machine)
+WHERE machine IS NOT NULL;
+UPDATE documents SET site_values_json = json_array(site)
+WHERE site IS NOT NULL;
+UPDATE documents SET document_type_values_json = json_array(document_type)
+WHERE document_type IS NOT NULL;
+"""
+
+_CURRENT_SCHEMA_VERSION = 10
 
 
 class LocalDocumentStore:
@@ -287,6 +319,23 @@ class LocalDocumentStore:
                     connection.executescript(_MIGRATION_VERSION_9)
                     connection.execute("PRAGMA user_version = 9")
                     version = 9
+                if version == 9:
+                    connection.executescript(_MIGRATION_VERSION_10)
+                    rows = connection.execute(
+                        "SELECT brand, machine, site, document_type FROM documents"
+                    ).fetchall()
+                    for row in rows:
+                        _store_metadata_options(
+                            connection,
+                            DocumentMetadata(
+                                brand=row["brand"],
+                                machine=row["machine"],
+                                site=row["site"],
+                                document_type=row["document_type"],
+                            ),
+                        )
+                    connection.execute("PRAGMA user_version = 10")
+                    version = 10
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"
@@ -355,30 +404,31 @@ class LocalDocumentStore:
             ) from error
         return tuple(self._document_from_row(row) for row in rows)
 
-    def list_metadata_options(self) -> tuple[DocumentMetadata, ...]:
-        """Return distinct populated metadata combinations from current manuals."""
+    def list_metadata_options(self) -> DocumentMetadata:
+        """Return every metadata value previously used for a manual."""
 
         self.initialise()
         with self._connection() as connection:
             rows = connection.execute(
                 """
-                SELECT DISTINCT brand, machine, site, document_type
-                FROM documents
-                WHERE lifecycle_status = 'current'
-                  AND (brand IS NOT NULL OR machine IS NOT NULL
-                       OR site IS NOT NULL OR document_type IS NOT NULL)
-                ORDER BY brand COLLATE NOCASE, machine COLLATE NOCASE,
-                         site COLLATE NOCASE, document_type COLLATE NOCASE
+                SELECT category, value
+                FROM metadata_options
+                ORDER BY category, value COLLATE NOCASE
                 """
             ).fetchall()
-        return tuple(
-            DocumentMetadata(
-                brand=row["brand"],
-                machine=row["machine"],
-                site=row["site"],
-                document_type=row["document_type"],
-            )
-            for row in rows
+        grouped: dict[str, list[str]] = {
+            "brand": [],
+            "machine": [],
+            "site": [],
+            "document_type": [],
+        }
+        for row in rows:
+            grouped[row["category"]].append(row["value"])
+        return DocumentMetadata(
+            brand=grouped["brand"],
+            machine=grouped["machine"],
+            site=grouped["site"],
+            document_type=grouped["document_type"],
         )
 
     def update_document_metadata(
@@ -414,14 +464,20 @@ class LocalDocumentStore:
                 changed = connection.execute(
                     """
                     UPDATE documents
-                    SET brand = ?, machine = ?, site = ?, document_type = ?
+                    SET brand = ?, machine = ?, site = ?, document_type = ?,
+                        brand_values_json = ?, machine_values_json = ?,
+                        site_values_json = ?, document_type_values_json = ?
                     WHERE id = ?
                     """,
                     (
-                        metadata.brand,
-                        metadata.machine,
-                        metadata.site,
-                        metadata.document_type,
+                        _first_metadata_value(metadata.brand),
+                        _first_metadata_value(metadata.machine),
+                        _first_metadata_value(metadata.site),
+                        _first_metadata_value(metadata.document_type),
+                        json.dumps(metadata.brand),
+                        json.dumps(metadata.machine),
+                        json.dumps(metadata.site),
+                        json.dumps(metadata.document_type),
                         document_id,
                     ),
                 ).rowcount
@@ -430,6 +486,7 @@ class LocalDocumentStore:
                         DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
                         "Document was not found",
                     )
+                _store_metadata_options(connection, metadata)
                 connection.executemany(
                     """
                     INSERT INTO embeddings (
@@ -685,8 +742,10 @@ class LocalDocumentStore:
                         document_format, size_bytes, title, page_count,
                         chunk_count, extractor_name, extractor_version, created_at,
                         lifecycle_status, revision, supersedes_document_id,
-                        lifecycle_updated_at, brand, machine, site, document_type
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        lifecycle_updated_at, brand, machine, site, document_type,
+                        brand_values_json, machine_values_json, site_values_json,
+                        document_type_values_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         document_id,
@@ -705,12 +764,17 @@ class LocalDocumentStore:
                         revision,
                         supersedes_document_id,
                         created_at.isoformat(),
-                        metadata.brand,
-                        metadata.machine,
-                        metadata.site,
-                        metadata.document_type,
+                        _first_metadata_value(metadata.brand),
+                        _first_metadata_value(metadata.machine),
+                        _first_metadata_value(metadata.site),
+                        _first_metadata_value(metadata.document_type),
+                        json.dumps(metadata.brand),
+                        json.dumps(metadata.machine),
+                        json.dumps(metadata.site),
+                        json.dumps(metadata.document_type),
                     ),
                 )
+                _store_metadata_options(connection, metadata)
                 parent_rows = [
                     self._parent_chunk_values(document_id, parent) for parent in parents
                 ]
@@ -1163,10 +1227,10 @@ class LocalDocumentStore:
                 row["lifecycle_updated_at"] or row["created_at"]
             ),
             metadata=DocumentMetadata(
-                brand=row["brand"],
-                machine=row["machine"],
-                site=row["site"],
-                document_type=row["document_type"],
+                brand=json.loads(row["brand_values_json"]),
+                machine=json.loads(row["machine_values_json"]),
+                site=json.loads(row["site_values_json"]),
+                document_type=json.loads(row["document_type_values_json"]),
             ),
         )
 
@@ -1278,17 +1342,52 @@ def _with_metadata_filters(
 ) -> tuple[str, list[object]]:
     if metadata is None:
         return query, parameters
-    columns = (
+    columns: tuple[tuple[str, tuple[str, ...]], ...] = (
         ("brand", metadata.brand),
         ("machine", metadata.machine),
         ("site", metadata.site),
         ("document_type", metadata.document_type),
     )
-    for column, value in columns:
-        if value is not None:
-            query += f" AND documents.{column} = ? COLLATE NOCASE"
-            parameters.append(value)
+    for column, values in columns:
+        if values:
+            placeholders = ", ".join("?" for _ in values)
+            query += (
+                " AND EXISTS ("
+                f"SELECT 1 FROM json_each(documents.{column}_values_json) metadata_value "
+                f"WHERE metadata_value.value COLLATE NOCASE IN ({placeholders})"
+                ")"
+            )
+            parameters.extend(values)
     return query, parameters
+
+
+def _first_metadata_value(values: tuple[str, ...]) -> str | None:
+    return values[0] if values else None
+
+
+def _store_metadata_options(
+    connection: sqlite3.Connection,
+    metadata: DocumentMetadata,
+) -> None:
+    created_at = datetime.now(UTC).isoformat()
+    categories: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("brand", metadata.brand),
+        ("machine", metadata.machine),
+        ("site", metadata.site),
+        ("document_type", metadata.document_type),
+    )
+    connection.executemany(
+        """
+        INSERT INTO metadata_options (category, value_key, value, created_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(category, value_key) DO NOTHING
+        """,
+        [
+            (category, value.casefold(), value, created_at)
+            for category, values in categories
+            for value in values
+        ],
+    )
 
 
 def _validate_chunk_hierarchy(

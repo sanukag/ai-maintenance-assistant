@@ -70,23 +70,23 @@ def test_service_embeds_metadata_and_refreshes_changed_duplicate_metadata(
     provider = KeywordEmbeddingProvider()
     service = IngestionService(_settings(tmp_path), embedding_provider=provider)
     first_metadata = DocumentMetadata(
-        brand="  Acme  Industries ",
-        machine="PX-4",
+        brand=["  Acme  Industries ", "Acme Industrial"],
+        machine=["PX-4", "PX-4 Mk II"],
         site="North plant",
         document_type="Service manual",
     )
 
     first = service.ingest(path, first_metadata)
 
-    assert first.document.metadata.brand == "Acme Industries"
-    assert "Brand: Acme Industries" in provider.calls[0][0]
-    assert "Machine: PX-4" in provider.calls[0][0]
+    assert first.document.metadata.brand == ("Acme Industries", "Acme Industrial")
+    assert "Brand: Acme Industries, Acme Industrial" in provider.calls[0][0]
+    assert "Machine: PX-4, PX-4 Mk II" in provider.calls[0][0]
     provider.calls.clear()
 
     updated = service.ingest(
         path,
         DocumentMetadata(
-            brand="Beta Engineering",
+            brand=["Beta Engineering", "Beta Service"],
             machine="PX-4",
             site="North plant",
             document_type="Service manual",
@@ -95,8 +95,8 @@ def test_service_embeds_metadata_and_refreshes_changed_duplicate_metadata(
 
     assert updated.status is IngestionStatus.ALREADY_EXISTS
     assert updated.document.id == first.document.id
-    assert updated.document.metadata.brand == "Beta Engineering"
-    assert provider.calls and "Brand: Beta Engineering" in provider.calls[0][0]
+    assert updated.document.metadata.brand == ("Beta Engineering", "Beta Service")
+    assert provider.calls and "Brand: Beta Engineering, Beta Service" in provider.calls[0][0]
 
 
 def test_revision_inherits_metadata_and_reindex_uses_it(tmp_path: Path) -> None:
@@ -122,6 +122,18 @@ def test_document_metadata_rejects_unsafe_or_oversized_values() -> None:
         DocumentMetadata(brand="Acme\nInjected")
     with pytest.raises(ValueError, match="100"):
         DocumentMetadata(machine="x" * 101)
+    with pytest.raises(ValueError, match="at most 20"):
+        DocumentMetadata(site=[f"Site {index}" for index in range(21)])
+
+
+def test_document_metadata_normalises_and_deduplicates_multiple_values() -> None:
+    metadata = DocumentMetadata(
+        brand=[" Acme ", "ACME", "", "Beta"],
+        machine=["PX-4", " PX-4 Mk II "],
+    )
+
+    assert metadata.brand == ("Acme", "Beta")
+    assert metadata.machine == ("PX-4", "PX-4 Mk II")
 
 
 def test_service_ingests_real_pdf_with_page_traceability(tmp_path: Path) -> None:

@@ -13,13 +13,13 @@ export type Health = {
 };
 
 export type DocumentMetadata = {
-  brand: string | null;
-  machine: string | null;
-  site: string | null;
-  document_type: string | null;
+  brand: string[];
+  machine: string[];
+  site: string[];
+  document_type: string[];
 };
 
-export type MetadataOptions = { items: DocumentMetadata[] };
+export type MetadataOptions = DocumentMetadata;
 
 export type DocumentRecord = {
   id: string;

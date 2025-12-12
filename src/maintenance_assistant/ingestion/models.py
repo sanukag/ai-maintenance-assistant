@@ -36,14 +36,18 @@ class DocumentLifecycleStatus(StrEnum):
 class DocumentMetadata:
     """Optional worker-supplied equipment and document classification."""
 
-    brand: str | None = None
-    machine: str | None = None
-    site: str | None = None
-    document_type: str | None = None
+    brand: tuple[str, ...] = ()
+    machine: tuple[str, ...] = ()
+    site: tuple[str, ...] = ()
+    document_type: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for name in ("brand", "machine", "site", "document_type"):
-            object.__setattr__(self, name, _normalise_metadata_value(getattr(self, name)))
+            object.__setattr__(
+                self,
+                name,
+                _normalise_metadata_values(getattr(self, name)),
+            )
 
     @property
     def is_empty(self) -> bool:
@@ -54,13 +58,13 @@ class DocumentMetadata:
     def labelled_values(self) -> tuple[tuple[str, str], ...]:
         """Return populated values in a stable embedding order."""
 
-        values = (
+        values: tuple[tuple[str, tuple[str, ...]], ...] = (
             ("Brand", self.brand),
             ("Machine", self.machine),
             ("Site/area", self.site),
             ("Document type", self.document_type),
         )
-        return tuple((label, value) for label, value in values if value is not None)
+        return tuple((label, ", ".join(value)) for label, value in values if value)
 
 
 def metadata_embedding_text(text: str, metadata: DocumentMetadata) -> str:
@@ -74,17 +78,31 @@ def metadata_embedding_text(text: str, metadata: DocumentMetadata) -> str:
     return "\n".join(lines)
 
 
-def _normalise_metadata_value(value: str | None) -> str | None:
-    if value is None:
-        return None
-    if any(ord(character) < 32 or ord(character) == 127 for character in value):
-        raise ValueError("Document metadata must not contain control characters")
-    normalised = " ".join(value.split())
-    if not normalised:
-        return None
-    if len(normalised) > 100:
-        raise ValueError("Document metadata values must be 100 characters or fewer")
-    return normalised
+def _normalise_metadata_values(
+    values: str | tuple[str, ...] | list[str] | None,
+) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    supplied = (values,) if isinstance(values, str) else tuple(values)
+    if len(supplied) > 20:
+        raise ValueError("Each metadata category can contain at most 20 values")
+    normalised_values: list[str] = []
+    seen: set[str] = set()
+    for value in supplied:
+        if not isinstance(value, str):
+            raise ValueError("Document metadata values must be text")
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("Document metadata must not contain control characters")
+        normalised = " ".join(value.split())
+        if not normalised:
+            continue
+        if len(normalised) > 100:
+            raise ValueError("Document metadata values must be 100 characters or fewer")
+        key = normalised.casefold()
+        if key not in seen:
+            seen.add(key)
+            normalised_values.append(normalised)
+    return tuple(normalised_values)
 
 
 @dataclass(frozen=True, slots=True)
