@@ -11,7 +11,7 @@ and does not require an additional external service.
 
 ## What is stored
 
-SQLite schema version 9 includes a conversation record, an ordered message
+SQLite schema version 10 includes a conversation record, an ordered message
 ledger, response feedback and the metadata filters used for each exchange. Each
 successful answer request stores, in one transaction:
 

@@ -210,13 +210,13 @@ def test_metadata_flows_through_upload_options_search_answers_and_history(
             "/documents",
             files={"file": ("acme.txt", b"Pump isolation procedure.", "text/plain")},
             data={
-                "brand": "  Acme  ",
-                "machine": "P-100",
+                "brand": ["  Acme  ", "Acme Industrial"],
+                "machine": ["P-100", "P-100 Mk II"],
                 "site": "North plant",
                 "document_type": "Service manual",
             },
         )
-        client.post(
+        beta = client.post(
             "/documents",
             files={"file": ("beta.txt", b"Pump inspection checklist.", "text/plain")},
             data={"brand": "Beta", "machine": "P-200", "site": "South plant"},
@@ -224,7 +224,11 @@ def test_metadata_flows_through_upload_options_search_answers_and_history(
         options = client.get("/metadata/options")
         searched = client.post(
             "/search",
-            json={"query": "pump", "brand": "acme", "machine": "P-100"},
+            json={"query": "pump", "brand": "acme", "machine": ["P-100"]},
+        )
+        searched_across_brands = client.post(
+            "/search",
+            json={"query": "pump", "brand": ["Acme Industrial", "Beta"]},
         )
         answered = client.post(
             "/answers",
@@ -237,26 +241,31 @@ def test_metadata_flows_through_upload_options_search_answers_and_history(
         history = client.get(
             f"/conversations/{answered.json()['conversation_id']}"
         )
+        client.post(f"/documents/{beta.json()['document']['id']}/archive")
+        client.delete(f"/documents/{beta.json()['document']['id']}")
+        retained_options = client.get("/metadata/options")
 
     metadata = acme.json()["document"]["metadata"]
     assert metadata == {
-        "brand": "Acme",
-        "machine": "P-100",
-        "site": "North plant",
-        "document_type": "Service manual",
+        "brand": ["Acme", "Acme Industrial"],
+        "machine": ["P-100", "P-100 Mk II"],
+        "site": ["North plant"],
+        "document_type": ["Service manual"],
     }
-    assert len(options.json()["items"]) == 2
-    assert {item["brand"] for item in options.json()["items"]} == {"Acme", "Beta"}
+    assert options.json()["brand"] == ["Acme", "Acme Industrial", "Beta"]
+    assert options.json()["machine"] == ["P-100", "P-100 Mk II", "P-200"]
+    assert "Beta" in retained_options.json()["brand"]
     assert {item["document"]["id"] for item in searched.json()["results"]} == {
         acme.json()["document"]["id"]
     }
-    assert "Brand: acme" in embeddings.calls[-2][0]
+    assert len(searched_across_brands.json()["results"]) == 2
+    assert any("Brand: acme" in call[0] for call in embeddings.calls)
     assert answered.status_code == 200
     assert history.json()["messages"][0]["scope_metadata"] == {
-        "brand": "Acme",
-        "machine": None,
-        "site": "North plant",
-        "document_type": None,
+        "brand": ["Acme"],
+        "machine": [],
+        "site": ["North plant"],
+        "document_type": [],
     }
 
 

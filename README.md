@@ -97,8 +97,9 @@ after enabling visual analysis.
 The Manuals page retains revision history while ensuring only current manuals
 contribute to search and answers. Workers can replace, archive, re-index or
 permanently delete a manual through explicit lifecycle controls. Upload forms
-can classify manuals by brand, machine, site/area and document type; the same
-dropdowns can restrict questions to the matching current manuals.
+can classify manuals with multiple brands, machines, sites/areas and document
+types. Previously used values remain available in searchable tagging controls,
+and the same classifications can restrict questions to matching current manuals.
 
 ### Enable embeddings and hybrid search
 

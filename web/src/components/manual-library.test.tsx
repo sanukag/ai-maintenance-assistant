@@ -17,7 +17,7 @@ const document = {
   revision: 1,
   supersedes_document_id: null,
   lifecycle_updated_at: "2026-07-13T09:00:00Z",
-  metadata: { brand: "Acme", machine: "P-100", site: "North plant", document_type: "Service manual" },
+  metadata: { brand: ["Acme", "Acme Industrial"], machine: ["P-100"], site: ["North plant"], document_type: ["Service manual"] },
 };
 
 const replacement = {
@@ -32,7 +32,7 @@ describe("ManualLibrary", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
-      if (url.includes("/metadata/options")) return Response.json({ items: [document.metadata] });
+      if (url.includes("/metadata/options")) return Response.json(document.metadata);
       if (url.endsWith("/revisions") && options?.method === "POST") {
         return Response.json({ status: "completed", document: replacement }, { status: 201 });
       }
@@ -115,9 +115,14 @@ describe("ManualLibrary", () => {
     const file = new File(["Pump isolation procedure"], "new-manual.txt", { type: "text/plain" });
 
     fireEvent.change(input, { target: { files: [file] } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Brand" }), { target: { value: "Acme" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Machine" }), { target: { value: "__new__" } });
-    fireEvent.change(screen.getByLabelText("New machine"), { target: { value: "P-200" } });
+    const brand = screen.getByRole("combobox", { name: "Add brand" });
+    fireEvent.focus(brand);
+    fireEvent.click(screen.getByRole("option", { name: "AcmeAdd" }));
+    fireEvent.change(brand, { target: { value: "Beta" } });
+    fireEvent.keyDown(brand, { key: "Enter" });
+    const machine = screen.getByRole("combobox", { name: "Add machine" });
+    fireEvent.change(machine, { target: { value: "P-200" } });
+    fireEvent.keyDown(machine, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "Add to library" }));
 
     expect(await screen.findByText("Pump manual is ready to use.")).toBeInTheDocument();
@@ -129,7 +134,7 @@ describe("ManualLibrary", () => {
       String(url).endsWith("/documents") && options?.method === "POST",
     );
     const body = uploadCall?.[1]?.body as FormData;
-    expect(body.get("brand")).toBe("Acme");
+    expect(body.getAll("brand")).toEqual(["Acme", "Beta"]);
     expect(body.get("machine")).toBe("P-200");
   });
 

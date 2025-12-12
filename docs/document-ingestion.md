@@ -25,11 +25,15 @@ calls the explicitly configured provider.
    lines without rewriting the document's meaning.
 7. Split text into section-aligned parent context and smaller retrieval children
    using configurable model-token budgets and word-aligned child overlap.
-8. Prefix each child with any selected brand, machine, site/area and document
-   type, then create one embedding per child when embeddings are enabled. Parent
+8. Prefix each child with all selected brands, machines, sites/areas and document
+   types, then create one embedding per child when embeddings are enabled. Parent
    sections are stored as context and are not embedded separately.
 9. Copy the original into controlled local storage and save its metadata,
    lifecycle state, chunks and vectors to SQLite in one transaction.
+
+Metadata values are normalised and de-duplicated case-insensitively. The value
+catalogue is retained independently from manual lifecycle records so a value
+used during an earlier upload remains available for future tagging.
 
 The source copy is hashed again before storage. Ingestion stops if the document
 changed after validation.

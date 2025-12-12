@@ -112,11 +112,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="primary-nav" aria-label="Main navigation">
-          <button className={`nav-item nav-item-button ${pathname === "/" ? "nav-item-active" : ""}`} type="button" onClick={() => selectConversation(null)} aria-current={pathname === "/" ? "page" : undefined}>
+          <Link className={`nav-item ${pathname === "/" ? "nav-item-active" : ""}`} href="/" onClick={(event) => { event.preventDefault(); setOpen(false); window.location.assign("/"); }} aria-current={pathname === "/" ? "page" : undefined}>
             <span className="nav-icon"><Icon name="spark" /></span>
             <span><strong>Assistant</strong><small>Maintenance workspace</small></span>
             {pathname === "/" && <span className="nav-active-dot" />}
-          </button>
+          </Link>
         </nav>
 
         <section className="sidebar-history" aria-label="Previous conversations">

@@ -16,8 +16,9 @@ The interface has three focused areas:
 - **Manuals** provides drag-and-drop or file-picker upload, current and retained
   revision views, replacement, re-indexing, archiving and confirmed permanent
   deletion. It accepts digital or scanned PDFs, PNG/JPEG document images, text
-  and Markdown. Upload and revision forms use existing metadata values as
-  dropdown choices and allow a new value to be entered when required.
+  and Markdown. Upload and revision forms use searchable create-or-select
+  controls. Workers can reuse saved values, type a new value and press Enter,
+  or attach several brands, machines, sites and document types to one manual.
 - **Settings** uses a compact operational status table for provider and service
   readiness, followed by configuration and developer runtime information.
 

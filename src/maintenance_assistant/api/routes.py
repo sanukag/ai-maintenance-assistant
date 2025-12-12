@@ -89,10 +89,10 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
 async def upload_document(
     response: Response,
     file: UploadFile = File(...),
-    brand: str | None = Form(default=None),
-    machine: str | None = Form(default=None),
-    site: str | None = Form(default=None),
-    document_type: str | None = Form(default=None),
+    brand: list[str] | None = Form(default=None),
+    machine: list[str] | None = Form(default=None),
+    site: list[str] | None = Form(default=None),
+    document_type: list[str] | None = Form(default=None),
     services: ApiServices = Depends(get_services),
 ) -> IngestionResponse:
     """Upload a supported document and run the complete ingestion pipeline."""
@@ -148,11 +148,8 @@ def list_metadata_options(
 ) -> MetadataOptionsResponse:
     """List current manual classifications for upload and retrieval dropdowns."""
 
-    return MetadataOptionsResponse(
-        items=[
-            DocumentMetadataResponse.from_metadata(metadata)
-            for metadata in services.store.list_metadata_options()
-        ]
+    return MetadataOptionsResponse.from_metadata(
+        services.store.list_metadata_options()
     )
 
 
@@ -199,10 +196,10 @@ def list_document_revisions(
 async def replace_document(
     document_id: str,
     file: UploadFile = File(...),
-    brand: str | None = Form(default=None),
-    machine: str | None = Form(default=None),
-    site: str | None = Form(default=None),
-    document_type: str | None = Form(default=None),
+    brand: list[str] | None = Form(default=None),
+    machine: list[str] | None = Form(default=None),
+    site: list[str] | None = Form(default=None),
+    document_type: list[str] | None = Form(default=None),
     services: ApiServices = Depends(get_services),
 ) -> IngestionResponse:
     """Add a new revision and supersede the selected current manual."""
@@ -461,10 +458,10 @@ def _safe_filename(uploaded_name: str | None) -> str:
 
 
 def _document_metadata(
-    brand: str | None,
-    machine: str | None,
-    site: str | None,
-    document_type: str | None,
+    brand: list[str] | None,
+    machine: list[str] | None,
+    site: list[str] | None,
+    document_type: list[str] | None,
 ) -> DocumentMetadata | None:
     if all(value is None for value in (brand, machine, site, document_type)):
         return None

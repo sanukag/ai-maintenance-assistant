@@ -7,7 +7,6 @@ import {
   type ConversationDetail,
   type ConversationMessage,
   type DocumentList,
-  type DocumentMetadata,
   type DocumentRecord,
   type GroundedAnswer,
   type Health,
@@ -21,14 +20,6 @@ const suggestions = [
   "How do I safely isolate equipment before maintenance?",
   "What does the manual say about abnormal vibration?",
 ];
-
-function distinctMetadataValues(
-  options: DocumentMetadata[],
-  key: keyof DocumentMetadata,
-) {
-  return Array.from(new Set(options.map((item) => item[key]).filter((value): value is string => Boolean(value))))
-    .sort((left, right) => left.localeCompare(right));
-}
 
 function AnswerText({ text }: { text: string }) {
   return (
@@ -96,7 +87,7 @@ export function AssistantWorkspace() {
   const [site, setSite] = useState("");
   const [documentType, setDocumentType] = useState("");
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
-  const [metadataOptions, setMetadataOptions] = useState<DocumentMetadata[]>([]);
+  const [metadataOptions, setMetadataOptions] = useState<MetadataOptions>({ brand: [], machine: [], site: [], document_type: [] });
   const [health, setHealth] = useState<Health | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationTitle, setConversationTitle] = useState<string | null>(null);
@@ -118,10 +109,10 @@ export function AssistantWorkspace() {
       setMessages(detail.messages);
       setDocumentId(detail.messages.at(-1)?.scope_document_id ?? "");
       const previousMetadata = detail.messages.at(-1)?.scope_metadata;
-      setBrand(previousMetadata?.brand ?? "");
-      setMachine(previousMetadata?.machine ?? "");
-      setSite(previousMetadata?.site ?? "");
-      setDocumentType(previousMetadata?.document_type ?? "");
+      setBrand(previousMetadata?.brand[0] ?? "");
+      setMachine(previousMetadata?.machine[0] ?? "");
+      setSite(previousMetadata?.site[0] ?? "");
+      setDocumentType(previousMetadata?.document_type[0] ?? "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Conversation history could not be opened.");
     } finally {
@@ -153,7 +144,7 @@ export function AssistantWorkspace() {
         if (!active) return;
         setHealth(serviceHealth);
         setDocuments(documentList.items);
-        setMetadataOptions(availableMetadata.items);
+        setMetadataOptions(availableMetadata);
         const selected = new URLSearchParams(window.location.search).get("conversation");
         if (selected) void openConversation(selected);
       })
@@ -177,19 +168,19 @@ export function AssistantWorkspace() {
     [documentId, documents],
   );
   const ready = health?.answers === "enabled";
-  const brands = useMemo(() => distinctMetadataValues(metadataOptions, "brand"), [metadataOptions]);
-  const machines = useMemo(() => distinctMetadataValues(metadataOptions, "machine"), [metadataOptions]);
-  const sites = useMemo(() => distinctMetadataValues(metadataOptions, "site"), [metadataOptions]);
-  const documentTypes = useMemo(() => distinctMetadataValues(metadataOptions, "document_type"), [metadataOptions]);
+  const brands = metadataOptions.brand;
+  const machines = metadataOptions.machine;
+  const sites = metadataOptions.site;
+  const documentTypes = metadataOptions.document_type;
 
   function selectDocument(value: string) {
     setDocumentId(value);
     const document = documents.find((item) => item.id === value);
     if (!document) return;
-    setBrand(document.metadata.brand ?? "");
-    setMachine(document.metadata.machine ?? "");
-    setSite(document.metadata.site ?? "");
-    setDocumentType(document.metadata.document_type ?? "");
+    setBrand(document.metadata.brand[0] ?? "");
+    setMachine(document.metadata.machine[0] ?? "");
+    setSite(document.metadata.site[0] ?? "");
+    setDocumentType(document.metadata.document_type[0] ?? "");
   }
 
   async function submitQuestion(event: FormEvent) {
@@ -206,10 +197,10 @@ export function AssistantWorkspace() {
           question: prepared,
           max_sources: 5,
           ...(documentId ? { document_id: documentId } : {}),
-          ...(brand ? { brand } : {}),
-          ...(machine ? { machine } : {}),
-          ...(site ? { site } : {}),
-          ...(documentType ? { document_type: documentType } : {}),
+          ...(brand ? { brand: [brand] } : {}),
+          ...(machine ? { machine: [machine] } : {}),
+          ...(site ? { site: [site] } : {}),
+          ...(documentType ? { document_type: [documentType] } : {}),
           ...(conversationId ? { conversation_id: conversationId } : {}),
         }),
       });

@@ -50,7 +50,7 @@ For a new document with embedding enabled:
 
 1. The normal ingestion stages create traceable parent sections and smaller
    child chunks.
-2. Any brand, machine, site/area and document-type values are prefixed to each
+2. All selected brand, machine, site/area and document-type values are prefixed to each
    embedding input without altering the stored source chunk.
 3. The provider creates one vector per child chunk.
 4. The pipeline verifies the response count, model, dimensions and finite
@@ -94,7 +94,8 @@ The default search path:
 1. Creates an embedding for the query with the configured provider.
 2. When filters are selected, uses the same metadata prefix in the query
    embedding and restricts both vector and text candidates with exact,
-   case-insensitive SQLite comparisons.
+   case-insensitive SQLite comparisons. Multiple values within one category
+   use OR semantics; separate populated categories use AND semantics.
 3. Ranks matching local vectors by cosine similarity.
 4. Independently ranks exact text matches with SQLite FTS5 and BM25.
 5. Combines the two ordered candidate lists with weighted reciprocal rank

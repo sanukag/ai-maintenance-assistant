@@ -58,10 +58,10 @@ class HealthResponse(BaseModel):
 class DocumentMetadataResponse(BaseModel):
     """Worker-supplied equipment and document classification."""
 
-    brand: str | None
-    machine: str | None
-    site: str | None
-    document_type: str | None
+    brand: list[str]
+    machine: list[str]
+    site: list[str]
+    document_type: list[str]
 
     @classmethod
     def from_metadata(cls, metadata: DocumentMetadata) -> DocumentMetadataResponse:
@@ -154,9 +154,21 @@ class DocumentListResponse(BaseModel):
 
 
 class MetadataOptionsResponse(BaseModel):
-    """Distinct metadata combinations available for dropdown filters."""
+    """Reusable metadata values available for tagging and retrieval filters."""
 
-    items: list[DocumentMetadataResponse]
+    brand: list[str]
+    machine: list[str]
+    site: list[str]
+    document_type: list[str]
+
+    @classmethod
+    def from_metadata(cls, metadata: DocumentMetadata) -> MetadataOptionsResponse:
+        return cls(
+            brand=list(metadata.brand),
+            machine=list(metadata.machine),
+            site=list(metadata.site),
+            document_type=list(metadata.document_type),
+        )
 
 
 class RevisionHistoryResponse(BaseModel):
@@ -188,19 +200,28 @@ class ReindexResponse(BaseModel):
 class MetadataFilterRequest(BaseModel):
     """Optional exact document metadata criteria shared by search requests."""
 
-    brand: str | None = Field(default=None, max_length=100)
-    machine: str | None = Field(default=None, max_length=100)
-    site: str | None = Field(default=None, max_length=100)
-    document_type: str | None = Field(default=None, max_length=100)
+    brand: list[str] = Field(default_factory=list, max_length=20)
+    machine: list[str] = Field(default_factory=list, max_length=20)
+    site: list[str] = Field(default_factory=list, max_length=20)
+    document_type: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("brand", "machine", "site", "document_type", mode="before")
+    @classmethod
+    def accept_single_metadata_value(cls, value: object) -> object:
+        """Retain compatibility with clients that send one scalar value."""
+
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
 
     @field_validator("brand", "machine", "site", "document_type")
     @classmethod
-    def normalise_metadata(cls, value: str | None) -> str | None:
+    def normalise_metadata(cls, values: list[str]) -> list[str]:
         """Apply the same metadata constraints used by ingestion."""
 
-        if value is None:
-            return None
-        return DocumentMetadata(brand=value).brand
+        return list(DocumentMetadata(brand=values).brand)
 
     def as_metadata(self) -> DocumentMetadata:
         return DocumentMetadata(
