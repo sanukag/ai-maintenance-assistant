@@ -72,6 +72,10 @@ export function ManualLibrary() {
   const [metadataOptions, setMetadataOptions] = useState<MetadataOptions>(emptyMetadataOptions);
   const [uploadMetadata, setUploadMetadata] = useState<DocumentMetadata>(emptyMetadata);
   const [replacementMetadata, setReplacementMetadata] = useState<DocumentMetadata>(emptyMetadata);
+  const [editedMetadata, setEditedMetadata] = useState<DocumentMetadata>(emptyMetadata);
+  const [catalogueCategory, setCatalogueCategory] = useState<MetadataKey>("brand");
+  const [catalogueValue, setCatalogueValue] = useState("");
+  const [catalogueReplacement, setCatalogueReplacement] = useState("");
   const [metadataFormKey, setMetadataFormKey] = useState(0);
   const [file, setFile] = useState<File | null>(null);
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
@@ -177,6 +181,7 @@ export function ManualLibrary() {
     setPendingAction(null);
     setReplacementFile(null);
     setReplacementMetadata(document.metadata);
+    setEditedMetadata(document.metadata);
     try {
       const response = await fetch(`/api/backend/documents/${document.id}/revisions`, { cache: "no-store" });
       setHistory((await readJson<{ items: DocumentRecord[] }>(response)).items);
@@ -192,6 +197,7 @@ export function ManualLibrary() {
     setPendingAction(null);
     setReplacementFile(null);
     setReplacementMetadata(emptyMetadata);
+    setEditedMetadata(emptyMetadata);
   }
 
   async function replaceManual() {
@@ -223,6 +229,49 @@ export function ManualLibrary() {
       closeManagementAfterWork();
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "The manual could not be re-indexed." });
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function saveMetadata() {
+    if (!selected || working) return;
+    setWorking(true);
+    try {
+      const response = await fetch(`/api/backend/documents/${selected.id}/metadata`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(editedMetadata),
+      });
+      const updated = await readJson<DocumentRecord>(response);
+      setSelected(updated);
+      setEditedMetadata(updated.metadata);
+      setMessage({ tone: "success", text: `${updated.title} classifications were updated and re-indexed.` });
+      await Promise.all([loadDocuments(), loadMetadataOptions()]);
+    } catch (error) {
+      setMessage({ tone: "error", text: error instanceof Error ? error.message : "Classifications could not be updated." });
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function changeCatalogueValue(remove = false) {
+    if (!catalogueValue || working) return;
+    setWorking(true);
+    try {
+      const response = await fetch(`/api/backend/metadata/options/${catalogueCategory}/${encodeURIComponent(catalogueValue)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ replacement: remove ? null : catalogueReplacement || null }),
+      });
+      const result = await readJson<{ affected_documents: number; options: MetadataOptions }>(response);
+      setMetadataOptions(result.options);
+      setCatalogueValue("");
+      setCatalogueReplacement("");
+      setMessage({ tone: "success", text: `${result.affected_documents} ${result.affected_documents === 1 ? "manual was" : "manuals were"} updated.` });
+      await loadDocuments();
+    } catch (error) {
+      setMessage({ tone: "error", text: error instanceof Error ? error.message : "The saved value could not be changed." });
     } finally {
       setWorking(false);
     }
@@ -290,6 +339,16 @@ export function ManualLibrary() {
         </div>
       </section>
 
+      <section className="metadata-catalogue-panel" aria-labelledby="metadata-catalogue-heading">
+        <div><p className="eyebrow">Classification catalogue</p><h2 id="metadata-catalogue-heading">Manage saved values</h2><p>Rename, merge or remove values across every manual that uses them.</p></div>
+        <div className="metadata-catalogue-controls">
+          <label>Category<select value={catalogueCategory} onChange={(event) => { setCatalogueCategory(event.target.value as MetadataKey); setCatalogueValue(""); }}><option value="brand">Brand</option><option value="machine">Machine</option><option value="site">Site / area</option><option value="document_type">Document type</option></select></label>
+          <label>Saved value<select value={catalogueValue} onChange={(event) => setCatalogueValue(event.target.value)}><option value="">Choose a value</option>{metadataOptions[catalogueCategory].map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
+          <label>Rename or merge into<input value={catalogueReplacement} maxLength={100} placeholder="New or existing value" onChange={(event) => setCatalogueReplacement(event.target.value)} /></label>
+          <div><button type="button" className="secondary-button" disabled={!catalogueValue || !catalogueReplacement.trim() || working} onClick={() => changeCatalogueValue(false)}>Rename or merge</button><button type="button" className="delete-action" disabled={!catalogueValue || working} onClick={() => changeCatalogueValue(true)}>Remove value</button></div>
+        </div>
+      </section>
+
       <section className="library-section" aria-labelledby="library-heading">
         <div className="section-heading-row library-heading-row">
           <div><p className="eyebrow">Your documents</p><h2 id="library-heading">Manual library</h2></div>
@@ -324,6 +383,8 @@ export function ManualLibrary() {
             <div className="dialog-status-line"><span className={`lifecycle-status status-${selected.lifecycle_status}`}><i /> {statusLabel(selected.lifecycle_status)}</span><span>{selected.chunk_count} indexed sections</span><span>Added {formatDate(selected.created_at)}</span></div>
 
             <div className="revision-history"><div className="dialog-section-heading"><h3>Revision history</h3><span>{history.length || "…"} retained</span></div><ol>{history.map((revision) => <li key={revision.id}><span className={`history-dot status-${revision.lifecycle_status}`} /><div><strong>Revision {revision.revision}</strong><small>{revision.original_filename} · {formatDate(revision.created_at)}</small></div><span>{statusLabel(revision.lifecycle_status)}</span></li>)}</ol></div>
+
+            <div className="manual-metadata-editor"><div className="dialog-section-heading"><div><h3>Manual classifications</h3><p>Changes refresh the metadata-aware search vectors.</p></div></div><MetadataFields metadata={editedMetadata} options={metadataOptions} onChange={setEditedMetadata} /><button type="button" className="secondary-button" onClick={saveMetadata} disabled={working || JSON.stringify(editedMetadata) === JSON.stringify(selected.metadata)}>{working ? "Saving…" : "Save classifications"}</button></div>
 
             {selected.lifecycle_status === "current" && !pendingAction && (
               <div className="manual-actions-grid">

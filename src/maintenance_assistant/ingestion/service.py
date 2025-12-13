@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -209,6 +210,61 @@ class IngestionService:
             embedding_model=self.embedding_provider.model,
             embedding_input_tokens=input_tokens,
         )
+
+    def update_metadata(
+        self,
+        document_id: str,
+        metadata: DocumentMetadata,
+    ) -> StoredDocument:
+        """Replace a manual's classifications and refresh metadata-aware vectors."""
+
+        document = self.store.get_document(document_id)
+        if document is None:
+            raise DocumentLifecycleError(
+                DocumentLifecycleErrorCode.DOCUMENT_NOT_FOUND,
+                "Document was not found",
+            )
+        embeddings: tuple[PreparedEmbedding, ...] = ()
+        if self.embedding_provider is not None:
+            embeddings, _ = self._embed_stored_chunks(
+                self.store.list_chunks(document_id),
+                metadata,
+            )
+        return self.store.update_document_metadata(document_id, metadata, embeddings)
+
+    def replace_metadata_option(
+        self,
+        category: str,
+        value: str,
+        replacement: str | None,
+    ) -> int:
+        """Rename, merge or remove a catalogue value across stored manuals."""
+
+        if category not in {"brand", "machine", "site", "document_type"}:
+            raise ValueError("Unknown metadata category")
+        source = DocumentMetadata(brand=value).brand
+        target = DocumentMetadata(brand=replacement).brand if replacement else ()
+        if not source:
+            raise ValueError("Metadata value must contain text")
+        source_key = source[0].casefold()
+        replacement_value = target[0] if target else None
+        affected = 0
+        for document in self.store.list_documents(limit=100_000):
+            current = getattr(document.metadata, category)
+            if not any(item.casefold() == source_key for item in current):
+                continue
+            revised: list[str] = []
+            for item in current:
+                candidate = replacement_value if item.casefold() == source_key else item
+                if candidate is not None and candidate.casefold() not in {
+                    existing.casefold() for existing in revised
+                }:
+                    revised.append(candidate)
+            updated = replace(document.metadata, **{category: tuple(revised)})
+            self.update_metadata(document.id, updated)
+            affected += 1
+        self.store.remove_metadata_option(category, source[0])
+        return affected
 
     def _result_for_existing(
         self,

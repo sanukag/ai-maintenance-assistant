@@ -171,6 +171,27 @@ class MetadataOptionsResponse(BaseModel):
         )
 
 
+class MetadataOptionChangeRequest(BaseModel):
+    """A replacement value, or null to remove the option without replacement."""
+
+    replacement: str | None = Field(default=None, max_length=100)
+
+    @field_validator("replacement")
+    @classmethod
+    def normalise_replacement(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        values = DocumentMetadata(brand=value).brand
+        return values[0] if values else None
+
+
+class MetadataOptionChangeResponse(BaseModel):
+    """Summary of a catalogue rename, merge or removal."""
+
+    affected_documents: int
+    options: MetadataOptionsResponse
+
+
 class RevisionHistoryResponse(BaseModel):
     """The ordered revision history for one manual family."""
 
@@ -230,6 +251,10 @@ class MetadataFilterRequest(BaseModel):
             site=self.site,
             document_type=self.document_type,
         )
+
+
+class DocumentMetadataRequest(MetadataFilterRequest):
+    """Validated replacement metadata for one stored manual."""
 
 
 class SearchRequest(MetadataFilterRequest):

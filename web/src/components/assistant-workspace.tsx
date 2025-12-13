@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
+import { MetadataTagSelector } from "@/components/metadata-tag-selector";
 import {
   type ConversationDetail,
   type ConversationMessage,
@@ -11,6 +12,7 @@ import {
   type GroundedAnswer,
   type Health,
   type MetadataOptions,
+  type DocumentMetadata,
   readJson,
   sourceLocation,
 } from "@/lib/api";
@@ -82,10 +84,7 @@ function StoredAnswer({
 export function AssistantWorkspace() {
   const [question, setQuestion] = useState("");
   const [documentId, setDocumentId] = useState("");
-  const [brand, setBrand] = useState("");
-  const [machine, setMachine] = useState("");
-  const [site, setSite] = useState("");
-  const [documentType, setDocumentType] = useState("");
+  const [filters, setFilters] = useState<DocumentMetadata>({ brand: [], machine: [], site: [], document_type: [] });
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [metadataOptions, setMetadataOptions] = useState<MetadataOptions>({ brand: [], machine: [], site: [], document_type: [] });
   const [health, setHealth] = useState<Health | null>(null);
@@ -109,10 +108,7 @@ export function AssistantWorkspace() {
       setMessages(detail.messages);
       setDocumentId(detail.messages.at(-1)?.scope_document_id ?? "");
       const previousMetadata = detail.messages.at(-1)?.scope_metadata;
-      setBrand(previousMetadata?.brand[0] ?? "");
-      setMachine(previousMetadata?.machine[0] ?? "");
-      setSite(previousMetadata?.site[0] ?? "");
-      setDocumentType(previousMetadata?.document_type[0] ?? "");
+      setFilters(previousMetadata ?? { brand: [], machine: [], site: [], document_type: [] });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Conversation history could not be opened.");
     } finally {
@@ -126,10 +122,7 @@ export function AssistantWorkspace() {
     setMessages([]);
     setQuestion("");
     setDocumentId("");
-    setBrand("");
-    setMachine("");
-    setSite("");
-    setDocumentType("");
+    setFilters({ brand: [], machine: [], site: [], document_type: [] });
     setError(null);
   }, []);
 
@@ -168,19 +161,25 @@ export function AssistantWorkspace() {
     [documentId, documents],
   );
   const ready = health?.answers === "enabled";
-  const brands = metadataOptions.brand;
-  const machines = metadataOptions.machine;
-  const sites = metadataOptions.site;
-  const documentTypes = metadataOptions.document_type;
+  function dependentOptions(key: keyof DocumentMetadata): string[] {
+    const otherKeys = (["brand", "machine", "site", "document_type"] as const).filter((item) => item !== key);
+    const constrained = otherKeys.some((item) => filters[item].length > 0);
+    if (!constrained) return metadataOptions[key];
+    const values = documents
+      .filter((document) => otherKeys.every((item) => (
+        filters[item].length === 0 || filters[item].some((selected) =>
+          document.metadata[item].some((value) => value.toLocaleLowerCase() === selected.toLocaleLowerCase()),
+        )
+      )))
+      .flatMap((document) => document.metadata[key]);
+    return [...new Set([...filters[key], ...values])].sort((left, right) => left.localeCompare(right));
+  }
 
   function selectDocument(value: string) {
     setDocumentId(value);
     const document = documents.find((item) => item.id === value);
     if (!document) return;
-    setBrand(document.metadata.brand[0] ?? "");
-    setMachine(document.metadata.machine[0] ?? "");
-    setSite(document.metadata.site[0] ?? "");
-    setDocumentType(document.metadata.document_type[0] ?? "");
+    setFilters(document.metadata);
   }
 
   async function submitQuestion(event: FormEvent) {
@@ -197,10 +196,10 @@ export function AssistantWorkspace() {
           question: prepared,
           max_sources: 5,
           ...(documentId ? { document_id: documentId } : {}),
-          ...(brand ? { brand: [brand] } : {}),
-          ...(machine ? { machine: [machine] } : {}),
-          ...(site ? { site: [site] } : {}),
-          ...(documentType ? { document_type: [documentType] } : {}),
+          ...(filters.brand.length ? { brand: filters.brand } : {}),
+          ...(filters.machine.length ? { machine: filters.machine } : {}),
+          ...(filters.site.length ? { site: filters.site } : {}),
+          ...(filters.document_type.length ? { document_type: filters.document_type } : {}),
           ...(conversationId ? { conversation_id: conversationId } : {}),
         }),
       });
@@ -287,10 +286,14 @@ export function AssistantWorkspace() {
             />
             <fieldset className="question-metadata-filters">
               <legend>Equipment filters <span>Optional</span></legend>
-              <label>Brand<select aria-label="Filter by brand" value={brand} onChange={(event) => setBrand(event.target.value)}><option value="">All brands</option>{brands.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
-              <label>Machine<select aria-label="Filter by machine" value={machine} onChange={(event) => setMachine(event.target.value)}><option value="">All machines</option>{machines.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
-              <label>Site / area<select aria-label="Filter by site or area" value={site} onChange={(event) => setSite(event.target.value)}><option value="">All sites</option>{sites.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
-              <label>Document type<select aria-label="Filter by document type" value={documentType} onChange={(event) => setDocumentType(event.target.value)}><option value="">All types</option>{documentTypes.map((value) => <option value={value} key={value}>{value}</option>)}</select></label>
+              {([
+                ["brand", "Brand"],
+                ["machine", "Machine"],
+                ["site", "Site / area"],
+                ["document_type", "Document type"],
+              ] as const).map(([key, label]) => (
+                <MetadataTagSelector key={key} label={`Filter by ${label.toLocaleLowerCase()}`} values={filters[key]} options={dependentOptions(key)} allowCreate={false} onChange={(values) => setFilters({ ...filters, [key]: values })} />
+              ))}
             </fieldset>
             <div className="question-actions">
               <label className="document-picker">

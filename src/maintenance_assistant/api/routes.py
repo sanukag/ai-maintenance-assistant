@@ -16,11 +16,14 @@ from maintenance_assistant.api.schemas import (
     ConversationResponse,
     ConversationSummaryResponse,
     DocumentListResponse,
+    DocumentMetadataRequest,
     DocumentResponse,
     HealthResponse,
     IngestionResponse,
     DocumentMetadataResponse,
     MetadataOptionsResponse,
+    MetadataOptionChangeRequest,
+    MetadataOptionChangeResponse,
     ReindexResponse,
     ResponseFeedbackRequest,
     ResponseFeedbackResponse,
@@ -153,6 +156,35 @@ def list_metadata_options(
     )
 
 
+@router.patch(
+    "/metadata/options/{category}/{value}",
+    response_model=MetadataOptionChangeResponse,
+    tags=["documents"],
+)
+def change_metadata_option(
+    category: str,
+    value: str,
+    request: MetadataOptionChangeRequest,
+    services: ApiServices = Depends(get_services),
+) -> MetadataOptionChangeResponse:
+    """Rename, merge or remove a reusable metadata value everywhere it is used."""
+
+    try:
+        affected = services.ingestion.replace_metadata_option(
+            category,
+            value,
+            request.replacement,
+        )
+    except ValueError as error:
+        raise ApiError(422, "invalid_metadata_option", str(error)) from error
+    return MetadataOptionChangeResponse(
+        affected_documents=affected,
+        options=MetadataOptionsResponse.from_metadata(
+            services.store.list_metadata_options()
+        ),
+    )
+
+
 @router.get(
     "/documents/{document_id}",
     response_model=DocumentResponse,
@@ -168,6 +200,23 @@ def get_document(
     if document is None:
         raise ApiError(404, "document_not_found", "Document was not found")
     return DocumentResponse.from_document(document)
+
+
+@router.patch(
+    "/documents/{document_id}/metadata",
+    response_model=DocumentResponse,
+    tags=["documents"],
+)
+def update_document_metadata(
+    document_id: str,
+    request: DocumentMetadataRequest,
+    services: ApiServices = Depends(get_services),
+) -> DocumentResponse:
+    """Edit a manual's classifications and refresh its metadata-aware vectors."""
+
+    return DocumentResponse.from_document(
+        services.ingestion.update_metadata(document_id, request.as_metadata())
+    )
 
 
 @router.get(
