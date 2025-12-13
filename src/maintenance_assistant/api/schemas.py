@@ -24,6 +24,7 @@ from maintenance_assistant.ingestion import (
     StoredParentChunk,
     VectorSearchResult,
 )
+from maintenance_assistant.jobs import IngestionJob
 
 
 class ErrorDetail(BaseModel):
@@ -143,6 +144,50 @@ class IngestionResponse(BaseModel):
                 input_tokens=result.embedding_input_tokens,
             ),
         )
+
+
+class IngestionJobResponse(BaseModel):
+    """Durable progress and outcome for one queued upload."""
+
+    id: str
+    original_filename: str
+    metadata: DocumentMetadataResponse
+    status: str
+    stage: str
+    progress: int
+    attempts: int
+    document_id: str | None
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+    @classmethod
+    def from_job(cls, job: IngestionJob) -> IngestionJobResponse:
+        return cls(
+            id=job.id,
+            original_filename=job.original_filename,
+            metadata=DocumentMetadataResponse.from_metadata(job.metadata),
+            status=job.status.value,
+            stage=job.stage,
+            progress=job.progress,
+            attempts=job.attempts,
+            document_id=job.document_id,
+            error_code=job.error_code,
+            error_message=job.error_message,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+        )
+
+
+class IngestionJobListResponse(BaseModel):
+    """Recent background ingestion work, newest first."""
+
+    items: list[IngestionJobResponse]
 
 
 class DocumentListResponse(BaseModel):

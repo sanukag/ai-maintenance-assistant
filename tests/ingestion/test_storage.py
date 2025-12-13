@@ -334,12 +334,17 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
             "SELECT name FROM sqlite_master "
             "WHERE type = 'table' AND name = 'conversation_message_feedback'"
         ).fetchone()
+        jobs_table = connection.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'ingestion_jobs'"
+        ).fetchone()
     finally:
         connection.close()
-    assert version == 10
+    assert version == 11
     assert embedding_table == ("embeddings",)
     assert conversation_table == ("conversations",)
     assert feedback_table == ("conversation_message_feedback",)
+    assert jobs_table == ("ingestion_jobs",)
     store = LocalDocumentStore(data_directory)
     migrated = store.get_document("existing-document")
     assert migrated.title == "Existing manual"

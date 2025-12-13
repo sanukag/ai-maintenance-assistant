@@ -11,6 +11,7 @@ from maintenance_assistant.config import Settings
 from maintenance_assistant.conversations import ConversationStore
 from maintenance_assistant.embeddings import EmbeddingProvider
 from maintenance_assistant.ingestion import IngestionService, LocalDocumentStore
+from maintenance_assistant.jobs import IngestionJobStore
 from maintenance_assistant.ocr import OCRProvider
 from maintenance_assistant.retrieval import HybridSearchService
 from maintenance_assistant.vision import VisualAnalysisProvider
@@ -24,6 +25,7 @@ class ApiServices:
     store: LocalDocumentStore
     conversations: ConversationStore
     ingestion: IngestionService
+    jobs: IngestionJobStore
     ocr_provider: OCRProvider | None
     visual_analysis_provider: VisualAnalysisProvider | None
     search: HybridSearchService | None
@@ -66,6 +68,7 @@ def build_services(
             ocr_provider=ocr_provider,
             visual_analysis_provider=visual_analysis_provider,
         ),
+        jobs=IngestionJobStore(configured_store),
         ocr_provider=ocr_provider,
         visual_analysis_provider=visual_analysis_provider,
         search=search,

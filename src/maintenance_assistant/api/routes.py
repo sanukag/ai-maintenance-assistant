@@ -20,6 +20,8 @@ from maintenance_assistant.api.schemas import (
     DocumentResponse,
     HealthResponse,
     IngestionResponse,
+    IngestionJobResponse,
+    IngestionJobListResponse,
     DocumentMetadataResponse,
     MetadataOptionsResponse,
     MetadataOptionChangeRequest,
@@ -118,6 +120,102 @@ async def upload_document(
     if result.status is IngestionStatus.ALREADY_EXISTS:
         response.status_code = status.HTTP_200_OK
     return IngestionResponse.from_result(result)
+
+
+@router.post(
+    "/ingestion-jobs",
+    response_model=IngestionJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["documents"],
+)
+async def queue_document(
+    file: UploadFile = File(...),
+    brand: list[str] | None = Form(default=None),
+    machine: list[str] | None = Form(default=None),
+    site: list[str] | None = Form(default=None),
+    document_type: list[str] | None = Form(default=None),
+    services: ApiServices = Depends(get_services),
+) -> IngestionJobResponse:
+    """Persist an upload and return immediately while a worker ingests it."""
+
+    filename = _safe_filename(file.filename)
+    maximum_bytes = services.settings.max_document_size_mb * 1024 * 1024
+    metadata = _document_metadata(brand, machine, site, document_type)
+    try:
+        with tempfile.TemporaryDirectory(prefix="ama-job-upload-") as temporary_directory:
+            upload_path = Path(temporary_directory) / filename
+            await _write_upload(file, upload_path, maximum_bytes)
+            job = await run_in_threadpool(
+                services.jobs.enqueue,
+                upload_path,
+                filename,
+                metadata or DocumentMetadata(),
+            )
+    finally:
+        await file.close()
+    return IngestionJobResponse.from_job(job)
+
+
+@router.get(
+    "/ingestion-jobs",
+    response_model=IngestionJobListResponse,
+    tags=["documents"],
+)
+def list_ingestion_jobs(
+    limit: int = Query(default=20, ge=1, le=100),
+    services: ApiServices = Depends(get_services),
+) -> IngestionJobListResponse:
+    return IngestionJobListResponse(
+        items=[IngestionJobResponse.from_job(job) for job in services.jobs.list(limit)]
+    )
+
+
+@router.get(
+    "/ingestion-jobs/{job_id}",
+    response_model=IngestionJobResponse,
+    tags=["documents"],
+)
+def get_ingestion_job(
+    job_id: str,
+    services: ApiServices = Depends(get_services),
+) -> IngestionJobResponse:
+    job = services.jobs.get(job_id)
+    if job is None:
+        raise ApiError(404, "ingestion_job_not_found", "Ingestion job was not found")
+    return IngestionJobResponse.from_job(job)
+
+
+@router.post(
+    "/ingestion-jobs/{job_id}/cancel",
+    response_model=IngestionJobResponse,
+    tags=["documents"],
+)
+def cancel_ingestion_job(
+    job_id: str,
+    services: ApiServices = Depends(get_services),
+) -> IngestionJobResponse:
+    job = services.jobs.cancel(job_id)
+    if job is None:
+        raise ApiError(404, "ingestion_job_not_found", "Ingestion job was not found")
+    return IngestionJobResponse.from_job(job)
+
+
+@router.post(
+    "/ingestion-jobs/{job_id}/retry",
+    response_model=IngestionJobResponse,
+    tags=["documents"],
+)
+def retry_ingestion_job(
+    job_id: str,
+    services: ApiServices = Depends(get_services),
+) -> IngestionJobResponse:
+    try:
+        job = services.jobs.retry(job_id)
+    except ValueError as error:
+        raise ApiError(409, "ingestion_job_not_retryable", str(error)) from error
+    if job is None:
+        raise ApiError(404, "ingestion_job_not_found", "Ingestion job was not found")
+    return IngestionJobResponse.from_job(job)
 
 
 @router.get("/documents", response_model=DocumentListResponse, tags=["documents"])
