@@ -12,6 +12,7 @@ DEFAULT_FILE_TYPES = (".pdf", ".txt", ".md", ".png", ".jpg", ".jpeg")
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 VALID_EMBEDDING_PROVIDERS = frozenset({"none", "openai"})
 VALID_VECTOR_STORES = frozenset({"sqlite", "qdrant"})
+VALID_RERANK_PROVIDERS = frozenset({"none", "openai"})
 VALID_ANSWER_PROVIDERS = frozenset({"none", "openai"})
 VALID_OCR_PROVIDERS = frozenset({"none", "tesseract"})
 VALID_VISUAL_ANALYSIS_PROVIDERS = frozenset({"none", "openai"})
@@ -55,6 +56,11 @@ class Settings:
     retrieval_rrf_k: int = 60
     retrieval_semantic_weight: float = 1.0
     retrieval_text_weight: float = 1.0
+    rerank_provider: str = "none"
+    rerank_model: str = "gpt-5.6-terra"
+    rerank_candidate_limit: int = 15
+    rerank_min_score: float = 0.25
+    rerank_max_output_tokens: int = 1_000
     answer_provider: str = "none"
     answer_model: str = "gpt-5.6-terra"
     answer_max_output_tokens: int = 1_000
@@ -229,6 +235,27 @@ class Settings:
         )
         if retrieval_semantic_weight == retrieval_text_weight == 0:
             raise ValueError("At least one retrieval weight must be greater than zero")
+        rerank_provider = values.get("AMA_RERANK_PROVIDER", "none").strip().lower()
+        if rerank_provider not in VALID_RERANK_PROVIDERS:
+            allowed = ", ".join(sorted(VALID_RERANK_PROVIDERS))
+            raise ValueError(f"AMA_RERANK_PROVIDER must be one of: {allowed}")
+        rerank_model = values.get("AMA_RERANK_MODEL", "gpt-5.6-terra").strip()
+        if not rerank_model:
+            raise ValueError("AMA_RERANK_MODEL must not be empty")
+        rerank_candidate_limit = _positive_integer(
+            values.get("AMA_RERANK_CANDIDATE_LIMIT", "15"),
+            "AMA_RERANK_CANDIDATE_LIMIT",
+        )
+        if rerank_candidate_limit > 50:
+            raise ValueError("AMA_RERANK_CANDIDATE_LIMIT must not exceed 50")
+        rerank_min_score = _bounded_float(
+            values.get("AMA_RERANK_MIN_SCORE", "0.25"),
+            "AMA_RERANK_MIN_SCORE",
+        )
+        rerank_max_output_tokens = _positive_integer(
+            values.get("AMA_RERANK_MAX_OUTPUT_TOKENS", "1000"),
+            "AMA_RERANK_MAX_OUTPUT_TOKENS",
+        )
         answer_provider = values.get("AMA_ANSWER_PROVIDER", "none").strip().lower()
         if answer_provider not in VALID_ANSWER_PROVIDERS:
             allowed = ", ".join(sorted(VALID_ANSWER_PROVIDERS))
@@ -245,6 +272,7 @@ class Settings:
             embedding_provider == "openai"
             or answer_provider == "openai"
             or visual_analysis_provider == "openai"
+            or rerank_provider == "openai"
         ) and openai_api_key is None:
             raise ValueError(
                 "OPENAI_API_KEY is required when an OpenAI provider is enabled"
@@ -287,6 +315,11 @@ class Settings:
             retrieval_rrf_k=retrieval_rrf_k,
             retrieval_semantic_weight=retrieval_semantic_weight,
             retrieval_text_weight=retrieval_text_weight,
+            rerank_provider=rerank_provider,
+            rerank_model=rerank_model,
+            rerank_candidate_limit=rerank_candidate_limit,
+            rerank_min_score=rerank_min_score,
+            rerank_max_output_tokens=rerank_max_output_tokens,
             answer_provider=answer_provider,
             answer_model=answer_model,
             answer_max_output_tokens=answer_max_output_tokens,
@@ -322,6 +355,13 @@ def _non_negative_float(value: str, setting_name: str) -> float:
         raise ValueError(f"{setting_name} must be a number") from error
     if not isfinite(parsed) or parsed < 0:
         raise ValueError(f"{setting_name} must be zero or greater")
+    return parsed
+
+
+def _bounded_float(value: str, setting_name: str) -> float:
+    parsed = _non_negative_float(value, setting_name)
+    if parsed > 1:
+        raise ValueError(f"{setting_name} must not exceed one")
     return parsed
 
 

@@ -55,6 +55,8 @@ def test_health_reports_local_services(tmp_path: Path) -> None:
         "answer_model": None,
         "vector_store": "sqlite",
         "vector_index": "disabled",
+        "reranking": "disabled",
+        "rerank_model": None,
     }
     assert (tmp_path / "data" / "maintenance-assistant.db").is_file()
 
@@ -178,6 +180,8 @@ def test_upload_browse_and_search_document(tmp_path: Path) -> None:
     assert search.json()["results"][0]["retrieval_methods"] == ["semantic", "text"]
     assert search.json()["results"][0]["semantic_score"] == pytest.approx(1.0)
     assert search.json()["results"][0]["lexical_score"] is not None
+    assert search.json()["results"][0]["fusion_score"] == pytest.approx(1.0)
+    assert search.json()["results"][0]["rerank_score"] is None
     assert provider.calls[-1] == ("How do I repair the pump?",)
 
 

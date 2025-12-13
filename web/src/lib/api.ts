@@ -12,6 +12,8 @@ export type Health = {
   answer_model: string | null;
   vector_store: "sqlite" | "qdrant";
   vector_index: "available" | "unavailable" | "disabled";
+  reranking: "enabled" | "disabled";
+  rerank_model: string | null;
 };
 
 export type DocumentMetadata = {

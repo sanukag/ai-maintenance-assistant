@@ -91,6 +91,8 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
             if services.vector_index.available()
             else "unavailable"
         ),
+        reranking="enabled" if services.reranker is not None else "disabled",
+        rerank_model=services.reranker.model if services.reranker is not None else None,
     )
 
 

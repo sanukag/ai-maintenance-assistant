@@ -40,6 +40,11 @@ def test_settings_use_local_defaults() -> None:
     assert settings.retrieval_rrf_k == 60
     assert settings.retrieval_semantic_weight == 1.0
     assert settings.retrieval_text_weight == 1.0
+    assert settings.rerank_provider == "none"
+    assert settings.rerank_model == "gpt-5.6-terra"
+    assert settings.rerank_candidate_limit == 15
+    assert settings.rerank_min_score == 0.25
+    assert settings.rerank_max_output_tokens == 1000
     assert settings.answer_provider == "none"
     assert settings.answer_model == "gpt-5.6-terra"
     assert settings.answer_max_output_tokens == 1000
@@ -82,6 +87,11 @@ def test_settings_read_environment_values() -> None:
             "AMA_RETRIEVAL_RRF_K": "50",
             "AMA_RETRIEVAL_SEMANTIC_WEIGHT": "1.5",
             "AMA_RETRIEVAL_TEXT_WEIGHT": "0.75",
+            "AMA_RERANK_PROVIDER": "openai",
+            "AMA_RERANK_MODEL": "gpt-rerank",
+            "AMA_RERANK_CANDIDATE_LIMIT": "20",
+            "AMA_RERANK_MIN_SCORE": "0.4",
+            "AMA_RERANK_MAX_OUTPUT_TOKENS": "500",
             "AMA_ANSWER_PROVIDER": "openai",
             "AMA_ANSWER_MODEL": "gpt-answer",
             "AMA_ANSWER_MAX_OUTPUT_TOKENS": "750",
@@ -122,6 +132,11 @@ def test_settings_read_environment_values() -> None:
     assert settings.retrieval_rrf_k == 50
     assert settings.retrieval_semantic_weight == 1.5
     assert settings.retrieval_text_weight == 0.75
+    assert settings.rerank_provider == "openai"
+    assert settings.rerank_model == "gpt-rerank"
+    assert settings.rerank_candidate_limit == 20
+    assert settings.rerank_min_score == 0.4
+    assert settings.rerank_max_output_tokens == 500
     assert settings.answer_provider == "openai"
     assert settings.answer_model == "gpt-answer"
     assert settings.answer_max_output_tokens == 750
@@ -246,6 +261,26 @@ def test_settings_reject_invalid_embedding_configuration(
     ],
 )
 def test_settings_reject_invalid_answer_configuration(
+    environment: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError):
+        Settings.from_environment(environment)
+
+
+@pytest.mark.parametrize(
+    "environment",
+    [
+        {"AMA_RERANK_PROVIDER": "unknown"},
+        {"AMA_RERANK_PROVIDER": "openai"},
+        {"AMA_RERANK_MODEL": " "},
+        {"AMA_RERANK_CANDIDATE_LIMIT": "0"},
+        {"AMA_RERANK_CANDIDATE_LIMIT": "51"},
+        {"AMA_RERANK_MIN_SCORE": "-0.1"},
+        {"AMA_RERANK_MIN_SCORE": "1.1"},
+        {"AMA_RERANK_MAX_OUTPUT_TOKENS": "0"},
+    ],
+)
+def test_settings_reject_invalid_reranking_configuration(
     environment: dict[str, str],
 ) -> None:
     with pytest.raises(ValueError):

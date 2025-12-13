@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from math import isfinite
 from typing import TYPE_CHECKING
 import logging
@@ -15,6 +15,7 @@ from maintenance_assistant.ingestion.models import (
 )
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
 from maintenance_assistant.vector_index import QdrantVectorIndex, VectorIndexError
+from maintenance_assistant.reranking import Reranker, RerankingError
 
 if TYPE_CHECKING:
     from maintenance_assistant.embeddings import EmbeddingProvider
@@ -92,6 +93,9 @@ class HybridSearchService:
         semantic_weight: float = 1.0,
         text_weight: float = 1.0,
         vector_index: QdrantVectorIndex | None = None,
+        reranker: Reranker | None = None,
+        rerank_candidate_limit: int = 15,
+        rerank_min_score: float = 0.25,
     ) -> None:
         if candidate_limit < 1:
             raise ValueError("candidate_limit must be greater than zero")
@@ -109,6 +113,13 @@ class HybridSearchService:
         self.rrf_k = rrf_k
         self.semantic_weight = semantic_weight
         self.text_weight = text_weight
+        if rerank_candidate_limit < 1:
+            raise ValueError("rerank_candidate_limit must be greater than zero")
+        if not 0 <= rerank_min_score <= 1:
+            raise ValueError("rerank_min_score must be between zero and one")
+        self.reranker = reranker
+        self.rerank_candidate_limit = rerank_candidate_limit
+        self.rerank_min_score = rerank_min_score
         self.vector_search = VectorSearchService(store, embedding_provider, vector_index)
 
     def search(
@@ -175,11 +186,13 @@ class HybridSearchService:
             ),
         )
         results: list[VectorSearchResult] = []
-        for state in ranked[:limit]:
+        result_count = self.rerank_candidate_limit if self.reranker is not None else limit
+        for state in ranked[:result_count]:
             source = state.source
+            fusion_score = state.rrf_score / maximum_rrf
             results.append(
                 VectorSearchResult(
-                    score=state.rrf_score / maximum_rrf,
+                    score=fusion_score,
                     model=self.embedding_provider.model,
                     chunk=source.chunk,
                     document=source.document,
@@ -187,6 +200,22 @@ class HybridSearchService:
                     semantic_score=state.semantic_score,
                     lexical_score=state.lexical_score,
                     retrieval_methods=tuple(state.methods),
+                    fusion_score=fusion_score,
                 )
             )
-        return tuple(results)
+        if self.reranker is not None and results:
+            try:
+                scores = {
+                    item.chunk_id: item.score
+                    for item in self.reranker.rerank(query, results)
+                }
+                reranked = [
+                    replace(result, score=scores[result.chunk.id], rerank_score=scores[result.chunk.id])
+                    for result in results
+                    if scores.get(result.chunk.id, -1) >= self.rerank_min_score
+                ]
+                reranked.sort(key=lambda result: (-result.score, result.chunk.id))
+                return tuple(reranked[:limit])
+            except RerankingError:
+                logger.exception("Candidate reranking failed; using fused retrieval order")
+        return tuple(results[:limit])
