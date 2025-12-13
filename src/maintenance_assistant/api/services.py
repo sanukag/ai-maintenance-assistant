@@ -15,6 +15,7 @@ from maintenance_assistant.jobs import IngestionJobStore
 from maintenance_assistant.ocr import OCRProvider
 from maintenance_assistant.retrieval import HybridSearchService
 from maintenance_assistant.vision import VisualAnalysisProvider
+from maintenance_assistant.vector_index import QdrantVectorIndex, create_vector_index
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,7 @@ class ApiServices:
     embedding_provider: EmbeddingProvider | None
     answers: GroundedAnswerService | None
     answer_provider: AnswerProvider | None
+    vector_index: QdrantVectorIndex | None
 
 
 def build_services(
@@ -45,6 +47,7 @@ def build_services(
     """Wire API-facing services to one store and provider configuration."""
 
     configured_store = store or LocalDocumentStore(settings.data_directory)
+    vector_index = create_vector_index(settings, configured_store)
     search = (
         HybridSearchService(
             configured_store,
@@ -53,6 +56,7 @@ def build_services(
             rrf_k=settings.retrieval_rrf_k,
             semantic_weight=settings.retrieval_semantic_weight,
             text_weight=settings.retrieval_text_weight,
+            vector_index=vector_index,
         )
         if embedding_provider is not None
         else None
@@ -67,6 +71,7 @@ def build_services(
             embedding_provider=embedding_provider,
             ocr_provider=ocr_provider,
             visual_analysis_provider=visual_analysis_provider,
+            vector_index=vector_index,
         ),
         jobs=IngestionJobStore(configured_store),
         ocr_provider=ocr_provider,
@@ -77,6 +82,7 @@ def build_services(
         if search is not None and answer_provider is not None
         else None,
         answer_provider=answer_provider,
+        vector_index=vector_index,
     )
 
 

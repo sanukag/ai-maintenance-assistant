@@ -30,6 +30,7 @@ from maintenance_assistant.api.schemas import (
     ResponseFeedbackRequest,
     ResponseFeedbackResponse,
     RevisionHistoryResponse,
+    VectorIndexRebuildResponse,
     SearchRequest,
     SearchResponse,
     SearchResultResponse,
@@ -82,6 +83,14 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
         embedding_model=provider.model if provider is not None else None,
         answers="enabled" if services.answers is not None else "disabled",
         answer_model=answer_provider.model if answer_provider is not None else None,
+        vector_store=services.settings.vector_store,
+        vector_index=(
+            "disabled"
+            if services.vector_index is None
+            else "available"
+            if services.vector_index.available()
+            else "unavailable"
+        ),
     )
 
 
@@ -380,7 +389,9 @@ def archive_document(
 ) -> DocumentResponse:
     """Archive a manual and exclude it from future retrieval."""
 
-    return DocumentResponse.from_document(services.store.archive_document(document_id))
+    document = services.store.archive_document(document_id)
+    services.ingestion.synchronise_vector_index(document_id)
+    return DocumentResponse.from_document(document)
 
 
 @router.post(
@@ -403,6 +414,25 @@ def reindex_document(
     return ReindexResponse.from_result(services.ingestion.reindex(document_id))
 
 
+@router.post(
+    "/vector-index/rebuild",
+    response_model=VectorIndexRebuildResponse,
+    tags=["system"],
+)
+def rebuild_vector_index(
+    services: ApiServices = Depends(get_services),
+) -> VectorIndexRebuildResponse:
+    """Recreate Qdrant from durable SQLite vectors after an outage or migration."""
+
+    if services.vector_index is None:
+        raise ApiError(409, "vector_index_disabled", "Qdrant vector storage is not enabled")
+    try:
+        count = services.vector_index.rebuild()
+    except Exception as error:
+        raise ApiError(503, "vector_index_unavailable", "Qdrant could not rebuild the vector index") from error
+    return VectorIndexRebuildResponse(indexed_chunks=count)
+
+
 @router.delete(
     "/documents/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -415,6 +445,7 @@ def delete_document(
     """Permanently delete a manual and all of its locally stored data."""
 
     services.store.delete_document(document_id)
+    services.ingestion.remove_from_vector_index(document_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

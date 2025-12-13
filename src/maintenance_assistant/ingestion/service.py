@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
+import logging
 from typing import TYPE_CHECKING, Callable, cast
 
 from maintenance_assistant.config import Settings
@@ -45,6 +46,9 @@ from maintenance_assistant.vision import (
 
 if TYPE_CHECKING:
     from maintenance_assistant.embeddings import EmbeddingProvider
+    from maintenance_assistant.vector_index import QdrantVectorIndex
+
+logger = logging.getLogger(__name__)
 
 _CONFIGURED_OCR_PROVIDER = object()
 _CONFIGURED_VISUAL_ANALYSIS_PROVIDER = object()
@@ -62,6 +66,7 @@ class IngestionService:
         visual_analysis_provider: VisualAnalysisProvider | None | object = (
             _CONFIGURED_VISUAL_ANALYSIS_PROVIDER
         ),
+        vector_index: QdrantVectorIndex | None = None,
     ) -> None:
         self.settings = settings
         self.store = store or LocalDocumentStore(settings.data_directory)
@@ -77,6 +82,7 @@ class IngestionService:
             else cast(VisualAnalysisProvider | None, visual_analysis_provider)
         )
         self.token_counter = TiktokenCounter(settings.chunk_token_encoding)
+        self.vector_index = vector_index
 
     def ingest(
         self,
@@ -121,6 +127,7 @@ class IngestionService:
             if stored is None:
                 raise
             return self._result_for_existing(stored, selected_metadata)
+        self.synchronise_vector_index(stored.id)
         report("Complete", 100)
         return IngestionResult(
             status=IngestionStatus.COMPLETED,
@@ -175,6 +182,8 @@ class IngestionService:
             supersedes_document_id=document_id,
             metadata=selected_metadata,
         )
+        self.synchronise_vector_index(stored.id)
+        self.synchronise_vector_index(document_id)
         return IngestionResult(
             status=IngestionStatus.COMPLETED,
             document=stored,
@@ -214,6 +223,7 @@ class IngestionService:
             hierarchy.children,
             embeddings,
         )
+        self.synchronise_vector_index(document_id)
         return ReindexResult(
             document=document,
             embedded_chunk_count=len(embeddings),
@@ -240,7 +250,27 @@ class IngestionService:
                 self.store.list_chunks(document_id),
                 metadata,
             )
-        return self.store.update_document_metadata(document_id, metadata, embeddings)
+        updated = self.store.update_document_metadata(document_id, metadata, embeddings)
+        self.synchronise_vector_index(document_id)
+        return updated
+
+    def synchronise_vector_index(self, document_id: str) -> None:
+        """Best-effort synchronise one manual without risking SQLite durability."""
+
+        if self.vector_index is None:
+            return
+        try:
+            self.vector_index.index_document(document_id)
+        except Exception:
+            logger.exception("Vector index synchronisation failed for %s", document_id)
+
+    def remove_from_vector_index(self, document_id: str) -> None:
+        if self.vector_index is None:
+            return
+        try:
+            self.vector_index.remove_document(document_id)
+        except Exception:
+            logger.exception("Vector index removal failed for %s", document_id)
 
     def replace_metadata_option(
         self,
@@ -319,6 +349,7 @@ class IngestionService:
         else:
             embedded_count = 0
             model = None
+        self.synchronise_vector_index(document.id)
         return IngestionResult(
             status=IngestionStatus.ALREADY_EXISTS,
             document=document,

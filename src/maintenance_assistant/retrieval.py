@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import isfinite
 from typing import TYPE_CHECKING
+import logging
 
 from maintenance_assistant.ingestion.models import (
     DocumentMetadata,
@@ -13,9 +14,12 @@ from maintenance_assistant.ingestion.models import (
     metadata_embedding_text,
 )
 from maintenance_assistant.ingestion.storage import LocalDocumentStore
+from maintenance_assistant.vector_index import QdrantVectorIndex, VectorIndexError
 
 if TYPE_CHECKING:
     from maintenance_assistant.embeddings import EmbeddingProvider
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,9 +40,11 @@ class VectorSearchService:
         self,
         store: LocalDocumentStore,
         embedding_provider: EmbeddingProvider,
+        vector_index: QdrantVectorIndex | None = None,
     ) -> None:
         self.store = store
         self.embedding_provider = embedding_provider
+        self.vector_index = vector_index
 
     def search(
         self,
@@ -58,13 +64,19 @@ class VectorSearchService:
         )
         if len(batch.vectors) != 1:
             raise ValueError("embedding provider did not return one query vector")
-        return self.store.search_vectors(
-            batch.vectors[0],
-            model=batch.model,
-            limit=limit,
-            document_id=document_id,
-            metadata=selected_metadata,
-        )
+        if self.vector_index is not None:
+            try:
+                scores = self.vector_index.search(
+                    batch.vectors[0],
+                    limit=limit,
+                    document_id=document_id,
+                    metadata=selected_metadata,
+                )
+                if scores:
+                    return self.store.hydrate_vector_results(scores, model=batch.model)
+            except VectorIndexError:
+                logger.exception("Indexed vector search failed; using SQLite fallback")
+        return self.store.search_vectors(batch.vectors[0], model=batch.model, limit=limit, document_id=document_id, metadata=selected_metadata)
 
 
 class HybridSearchService:
@@ -79,6 +91,7 @@ class HybridSearchService:
         rrf_k: int = 60,
         semantic_weight: float = 1.0,
         text_weight: float = 1.0,
+        vector_index: QdrantVectorIndex | None = None,
     ) -> None:
         if candidate_limit < 1:
             raise ValueError("candidate_limit must be greater than zero")
@@ -96,7 +109,7 @@ class HybridSearchService:
         self.rrf_k = rrf_k
         self.semantic_weight = semantic_weight
         self.text_weight = text_weight
-        self.vector_search = VectorSearchService(store, embedding_provider)
+        self.vector_search = VectorSearchService(store, embedding_provider, vector_index)
 
     def search(
         self,

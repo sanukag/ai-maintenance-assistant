@@ -20,6 +20,7 @@ from maintenance_assistant.ingestion import DocumentMetadata, IngestionService, 
 from maintenance_assistant.ingestion.errors import IngestionError
 from maintenance_assistant.ocr import create_ocr_provider
 from maintenance_assistant.vision import create_visual_analysis_provider
+from maintenance_assistant.vector_index import create_vector_index
 
 logger = logging.getLogger(__name__)
 
@@ -252,13 +253,20 @@ class IngestionWorker:
 def run_worker(settings: Settings, poll_seconds: float = 1.0, once: bool = False) -> None:
     store = LocalDocumentStore(settings.data_directory)
     jobs = IngestionJobStore(store)
+    vector_index = create_vector_index(settings, store)
     ingestion = IngestionService(
         settings,
         store=store,
         embedding_provider=create_embedding_provider(settings),
         ocr_provider=create_ocr_provider(settings),
         visual_analysis_provider=create_visual_analysis_provider(settings),
+        vector_index=vector_index,
     )
+    if vector_index is not None:
+        try:
+            vector_index.rebuild()
+        except Exception:
+            logger.exception("Qdrant bootstrap failed; SQLite fallback remains active")
     jobs.recover_interrupted()
     worker = IngestionWorker(jobs, ingestion)
     while True:

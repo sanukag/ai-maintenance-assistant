@@ -11,6 +11,7 @@ from typing import Mapping
 DEFAULT_FILE_TYPES = (".pdf", ".txt", ".md", ".png", ".jpg", ".jpeg")
 VALID_LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 VALID_EMBEDDING_PROVIDERS = frozenset({"none", "openai"})
+VALID_VECTOR_STORES = frozenset({"sqlite", "qdrant"})
 VALID_ANSWER_PROVIDERS = frozenset({"none", "openai"})
 VALID_OCR_PROVIDERS = frozenset({"none", "tesseract"})
 VALID_VISUAL_ANALYSIS_PROVIDERS = frozenset({"none", "openai"})
@@ -47,6 +48,9 @@ class Settings:
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 512
     embedding_batch_size: int = 128
+    vector_store: str = "sqlite"
+    qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_timeout_seconds: int = 5
     retrieval_candidate_limit: int = 30
     retrieval_rrf_k: int = 60
     retrieval_semantic_weight: float = 1.0
@@ -194,6 +198,19 @@ class Settings:
         )
         if embedding_batch_size > 2048:
             raise ValueError("AMA_EMBEDDING_BATCH_SIZE must not exceed 2048")
+        vector_store = values.get("AMA_VECTOR_STORE", "sqlite").strip().lower()
+        if vector_store not in VALID_VECTOR_STORES:
+            allowed = ", ".join(sorted(VALID_VECTOR_STORES))
+            raise ValueError(f"AMA_VECTOR_STORE must be one of: {allowed}")
+        qdrant_url = values.get("AMA_QDRANT_URL", "http://127.0.0.1:6333").strip().rstrip("/")
+        if not qdrant_url.startswith(("http://", "https://")):
+            raise ValueError("AMA_QDRANT_URL must be an HTTP or HTTPS URL")
+        qdrant_timeout_seconds = _positive_integer(
+            values.get("AMA_QDRANT_TIMEOUT_SECONDS", "5"),
+            "AMA_QDRANT_TIMEOUT_SECONDS",
+        )
+        if qdrant_timeout_seconds > 60:
+            raise ValueError("AMA_QDRANT_TIMEOUT_SECONDS must not exceed 60")
         retrieval_candidate_limit = _positive_integer(
             values.get("AMA_RETRIEVAL_CANDIDATE_LIMIT", "30"),
             "AMA_RETRIEVAL_CANDIDATE_LIMIT",
@@ -263,6 +280,9 @@ class Settings:
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,
             embedding_batch_size=embedding_batch_size,
+            vector_store=vector_store,
+            qdrant_url=qdrant_url,
+            qdrant_timeout_seconds=qdrant_timeout_seconds,
             retrieval_candidate_limit=retrieval_candidate_limit,
             retrieval_rrf_k=retrieval_rrf_k,
             retrieval_semantic_weight=retrieval_semantic_weight,

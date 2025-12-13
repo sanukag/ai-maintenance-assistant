@@ -54,6 +54,8 @@ class HealthResponse(BaseModel):
     embedding_model: str | None
     answers: str
     answer_model: str | None
+    vector_store: str
+    vector_index: str
 
 
 class DocumentMetadataResponse(BaseModel):
@@ -261,6 +263,12 @@ class ReindexResponse(BaseModel):
                 input_tokens=result.embedding_input_tokens,
             ),
         )
+
+
+class VectorIndexRebuildResponse(BaseModel):
+    """Outcome of rebuilding the external index from SQLite embeddings."""
+
+    indexed_chunks: int
 
 
 class MetadataFilterRequest(BaseModel):
