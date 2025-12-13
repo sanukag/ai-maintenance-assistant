@@ -22,6 +22,7 @@ dependencies = [
 [project.scripts]
 ama-ingest = "maintenance_assistant.cli:main"
 ama-api = "maintenance_assistant.api.__main__:main"
+ama-worker = "maintenance_assistant.worker:main"
 ama-search = "maintenance_assistant.cli:search_main"
 ama-evaluate-retrieval = "maintenance_assistant.cli:evaluation_main"
 

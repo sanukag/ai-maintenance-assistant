@@ -10,6 +10,7 @@ from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.routes import _safe_filename
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion import IngestionErrorCode
+from maintenance_assistant.jobs import IngestionWorker
 from tests.fakes import (
     FixedAnswerProvider,
     FixedOCRProvider,
@@ -193,6 +194,45 @@ def test_repeated_upload_returns_existing_document(tmp_path: Path) -> None:
     assert second.status_code == 200
     assert second.json()["status"] == "already_exists"
     assert second.json()["document"]["id"] == first.json()["document"]["id"]
+
+
+def test_background_upload_can_be_polled_cancelled_retried_and_completed(
+    tmp_path: Path,
+) -> None:
+    application = create_app(
+        settings=_settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+    )
+    with TestClient(application) as client:
+        queued = client.post(
+            "/ingestion-jobs",
+            files={"file": ("pump.txt", b"Inspect the pump seal.", "text/plain")},
+            data={"brand": ["Acme", "Northwind"]},
+        )
+        unclassified = client.post(
+            "/ingestion-jobs",
+            files={"file": ("plain.txt", b"Plain procedure.", "text/plain")},
+        )
+        job_id = queued.json()["id"]
+        cancelled = client.post(f"/ingestion-jobs/{job_id}/cancel")
+        retried = client.post(f"/ingestion-jobs/{job_id}/retry")
+        assert IngestionWorker(
+            application.state.services.jobs,
+            application.state.services.ingestion,
+        ).run_once()
+        completed = client.get(f"/ingestion-jobs/{job_id}")
+        recent = client.get("/ingestion-jobs")
+
+    assert queued.status_code == 202
+    assert unclassified.status_code == 202
+    assert unclassified.json()["metadata"]["brand"] == []
+    assert queued.json()["status"] == "queued"
+    assert queued.json()["metadata"]["brand"] == ["Acme", "Northwind"]
+    assert cancelled.json()["status"] == "cancelled"
+    assert retried.json()["status"] == "queued"
+    assert completed.json()["status"] == "completed"
+    assert completed.json()["document_id"] is not None
+    assert job_id in {item["id"] for item in recent.json()["items"]}
 
 
 def test_metadata_flows_through_upload_options_search_answers_and_history(
@@ -422,6 +462,10 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
     assert schema["info"]["title"] == "AI Maintenance Assistant API"
     assert set(schema["paths"]) == {
         "/health",
+        "/ingestion-jobs",
+        "/ingestion-jobs/{job_id}",
+        "/ingestion-jobs/{job_id}/cancel",
+        "/ingestion-jobs/{job_id}/retry",
         "/metadata/options",
         "/metadata/options/{category}/{value}",
         "/documents",

@@ -48,6 +48,11 @@ from OCR and requires `OPENAI_API_KEY`.
 | `DELETE` | `/documents/{document_id}` | Permanently remove a manual and its data |
 | `POST` | `/search` | Search embedded chunks and return source locations |
 | `POST` | `/answers` | Generate a grounded answer with verified citations |
+| `POST` | `/ingestion-jobs` | Persist an upload and queue background ingestion |
+| `GET` | `/ingestion-jobs` | List recent queued, active and completed imports |
+| `GET` | `/ingestion-jobs/{job_id}` | Poll progress and failure details |
+| `POST` | `/ingestion-jobs/{job_id}/cancel` | Cancel queued work or request cooperative cancellation |
+| `POST` | `/ingestion-jobs/{job_id}/retry` | Retry a retained failed or cancelled upload |
 | `GET` | `/conversations` | List saved conversations from newest to oldest |
 | `GET` | `/conversations/{conversation_id}` | Reopen every message and citation in a conversation |
 | `PUT` | `/conversations/{conversation_id}/messages/{message_id}/feedback` | Record or replace answer feedback |
@@ -68,14 +73,16 @@ curl -F "file=@./manuals/pump.pdf" \
   -F "brand=Acme" -F "brand=Acme Industrial" \
   -F "machine=P-100" -F "machine=P-100 Mk II" -F "site=North plant" \
   -F "document_type=Service manual" \
-  http://127.0.0.1:8000/documents
+  http://127.0.0.1:8000/ingestion-jobs
 ```
 
 The API streams the upload into a temporary directory in 1 MB blocks and stops
 when `AMA_MAX_DOCUMENT_SIZE_MB` is exceeded. It sanitises the supplied filename
-before passing the temporary file into the normal validation, extraction,
-chunking, embedding and storage workflow. The temporary copy is removed after
-the request; the ingestion store retains its own managed original.
+before copying it into the durable job area. HTTP `202` is returned after that
+copy and queue record commit. A dedicated worker then performs validation,
+extraction, chunking, embedding and storage, updating the stage and percentage
+between expensive steps. Completed staged files are removed; failed and
+cancelled files are retained so an operator can retry them.
 
 Scanned PDF pages and `PNG`/`JPEG` images are recognised with the configured
 local Tesseract engine. OCR dependency failures return HTTP `503`, per-page
@@ -88,7 +95,8 @@ charts and tables. Provider failures return HTTP `502`, provider timeouts return
 HTTP `504`, and unavailable configuration returns HTTP `503`. Successful visual
 descriptions are stored as page-cited chunks and embedded with ordinary text.
 
-A new document returns HTTP `201` and `status: completed`. Submitting identical
+A synchronous compatibility endpoint remains at `POST /documents`. A new
+document there returns HTTP `201` and `status: completed`. Submitting identical
 content returns HTTP `200`, `status: already_exists` and the existing document
 identifier. If embeddings have since been enabled, the duplicate path also
 backfills any missing vectors.

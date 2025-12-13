@@ -63,6 +63,59 @@ services:
       start_period: 5s
       retries: 5
 
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["ama-worker", "--poll-seconds", "1"]
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AMA_DATA_DIRECTORY: /app/data
+      AMA_MAX_DOCUMENT_SIZE_MB: ${AMA_MAX_DOCUMENT_SIZE_MB:-25}
+      AMA_SUPPORTED_FILE_TYPES: ${AMA_SUPPORTED_FILE_TYPES:-.pdf,.txt,.md,.png,.jpg,.jpeg}
+      AMA_CHUNK_SIZE_TOKENS: ${AMA_CHUNK_SIZE_TOKENS:-300}
+      AMA_CHUNK_OVERLAP_TOKENS: ${AMA_CHUNK_OVERLAP_TOKENS:-40}
+      AMA_PARENT_CHUNK_SIZE_TOKENS: ${AMA_PARENT_CHUNK_SIZE_TOKENS:-900}
+      AMA_CHUNK_TOKEN_ENCODING: ${AMA_CHUNK_TOKEN_ENCODING:-cl100k_base}
+      AMA_LOG_LEVEL: ${AMA_LOG_LEVEL:-INFO}
+      AMA_OCR_PROVIDER: ${AMA_OCR_PROVIDER:-tesseract}
+      AMA_OCR_LANGUAGE: ${AMA_OCR_LANGUAGE:-eng}
+      AMA_OCR_DPI: ${AMA_OCR_DPI:-300}
+      AMA_OCR_PAGE_TIMEOUT_SECONDS: ${AMA_OCR_PAGE_TIMEOUT_SECONDS:-30}
+      AMA_OCR_MAX_PAGES: ${AMA_OCR_MAX_PAGES:-100}
+      AMA_OCR_MAX_IMAGE_PIXELS: ${AMA_OCR_MAX_IMAGE_PIXELS:-50000000}
+      AMA_VISUAL_ANALYSIS_PROVIDER: ${AMA_VISUAL_ANALYSIS_PROVIDER:-none}
+      AMA_VISUAL_ANALYSIS_MODEL: ${AMA_VISUAL_ANALYSIS_MODEL:-gpt-5.6-terra}
+      AMA_VISUAL_ANALYSIS_DETAIL: ${AMA_VISUAL_ANALYSIS_DETAIL:-high}
+      AMA_VISUAL_ANALYSIS_RENDER_DPI: ${AMA_VISUAL_ANALYSIS_RENDER_DPI:-150}
+      AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS: ${AMA_VISUAL_ANALYSIS_TIMEOUT_SECONDS:-60}
+      AMA_VISUAL_ANALYSIS_MAX_PAGES: ${AMA_VISUAL_ANALYSIS_MAX_PAGES:-100}
+      AMA_VISUAL_ANALYSIS_MAX_IMAGE_PIXELS: ${AMA_VISUAL_ANALYSIS_MAX_IMAGE_PIXELS:-25000000}
+      AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS: ${AMA_VISUAL_ANALYSIS_MAX_OUTPUT_TOKENS:-1000}
+      AMA_EMBEDDING_PROVIDER: ${AMA_EMBEDDING_PROVIDER:-none}
+      AMA_EMBEDDING_MODEL: ${AMA_EMBEDDING_MODEL:-text-embedding-3-small}
+      AMA_EMBEDDING_DIMENSIONS: ${AMA_EMBEDDING_DIMENSIONS:-512}
+      AMA_EMBEDDING_BATCH_SIZE: ${AMA_EMBEDDING_BATCH_SIZE:-128}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - maintenance-data:/app/data
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      start_period: 3s
+      retries: 3
+
   web:
     build:
       context: .

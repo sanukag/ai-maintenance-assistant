@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 from maintenance_assistant.config import Settings
 from maintenance_assistant.ingestion.chunking import (
@@ -82,23 +82,32 @@ class IngestionService:
         self,
         path: Path,
         metadata: DocumentMetadata | None = None,
+        progress: Callable[[str, int], None] | None = None,
     ) -> IngestionResult:
         """Ingest one local document or return its existing stored record."""
 
+        report = progress or (lambda _stage, _progress: None)
+        report("Validating upload", 5)
         validated = validate_document(path, self.settings)
         existing = self.store.find_by_hash(validated.content_hash)
         if existing is not None:
+            report("Checking existing manual", 85)
             return self._result_for_existing(existing, metadata)
 
         selected_metadata = metadata or DocumentMetadata()
 
+        report("Extracting text and visuals", 20)
         extracted = self._extract(validated)
+        report("Normalising content", 42)
         normalised = normalise_document(extracted)
+        report("Building searchable sections", 55)
         hierarchy = self._prepare_hierarchy(normalised)
+        report("Creating embeddings", 68)
         embeddings, input_tokens = self._embed_prepared_chunks(
             hierarchy.children,
             selected_metadata,
         )
+        report("Saving manual", 90)
         try:
             stored = self.store.save(
                 extracted,
@@ -112,6 +121,7 @@ class IngestionService:
             if stored is None:
                 raise
             return self._result_for_existing(stored, selected_metadata)
+        report("Complete", 100)
         return IngestionResult(
             status=IngestionStatus.COMPLETED,
             document=stored,

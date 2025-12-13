@@ -265,7 +265,32 @@ UPDATE documents SET document_type_values_json = json_array(document_type)
 WHERE document_type IS NOT NULL;
 """
 
-_CURRENT_SCHEMA_VERSION = 10
+_MIGRATION_VERSION_11 = """
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id TEXT PRIMARY KEY,
+    original_filename TEXT NOT NULL,
+    staged_path TEXT NOT NULL UNIQUE,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK (
+        status IN ('queued', 'processing', 'cancel_requested', 'completed', 'failed', 'cancelled')
+    ),
+    stage TEXT NOT NULL,
+    progress INTEGER NOT NULL CHECK (progress BETWEEN 0 AND 100),
+    attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
+    error_code TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ingestion_jobs_status_created_idx
+ON ingestion_jobs(status, created_at);
+"""
+
+_CURRENT_SCHEMA_VERSION = 11
 
 
 class LocalDocumentStore:
@@ -336,6 +361,10 @@ class LocalDocumentStore:
                         )
                     connection.execute("PRAGMA user_version = 10")
                     version = 10
+                if version == 10:
+                    connection.executescript(_MIGRATION_VERSION_11)
+                    connection.execute("PRAGMA user_version = 11")
+                    version = 11
                 if version != _CURRENT_SCHEMA_VERSION:
                     raise sqlite3.DatabaseError(
                         f"Unsupported database schema version: {version}"

@@ -45,6 +45,25 @@ export type DocumentList = {
   offset: number;
 };
 
+export type IngestionJob = {
+  id: string;
+  original_filename: string;
+  metadata: DocumentMetadata;
+  status: "queued" | "processing" | "cancel_requested" | "completed" | "failed" | "cancelled";
+  stage: string;
+  progress: number;
+  attempts: number;
+  document_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
+export type IngestionJobList = { items: IngestionJob[] };
+
 export type AnswerCitation = {
   source_id: string;
   score: number;

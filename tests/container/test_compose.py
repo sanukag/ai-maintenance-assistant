@@ -50,6 +50,13 @@ def test_compose_configuration_is_valid() -> None:
         for volume in api["volumes"]
     )
     assert api["healthcheck"]["test"][0] == "CMD"
+    worker = configuration["services"]["worker"]
+    assert worker["read_only"] is True
+    assert worker["cap_drop"] == ["ALL"]
+    assert worker["command"][0] == "ama-worker"
+    assert worker["environment"]["AMA_DATA_DIRECTORY"] == "/app/data"
+    assert worker["depends_on"]["api"]["condition"] == "service_healthy"
+    assert worker["healthcheck"]["test"][0] == "CMD-SHELL"
     web = configuration["services"]["web"]
     assert web["read_only"] is True
     assert web["cap_drop"] == ["ALL"]
@@ -132,6 +139,16 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
             environment=environment,
         )
         assert web_user.stdout.strip() == "10001"
+        worker_user = _compose(
+            *compose,
+            "exec",
+            "-T",
+            "worker",
+            "id",
+            "-u",
+            environment=environment,
+        )
+        assert worker_user.stdout.strip() == "10001"
 
         scanned_path = tmp_path / "scanned-procedure.pdf"
         write_scanned_pdf(
@@ -143,11 +160,14 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
             filename="scanned-procedure.pdf",
             content=scanned_path.read_bytes(),
             content_type="application/pdf",
+            path="/ingestion-jobs",
         )
-        assert scanned["document"]["extractor_name"].startswith("pypdf+tesseract")
-        assert scanned["document"]["page_count"] == 1
-        assert scanned["document"]["chunk_count"] >= 1
-        scanned_document_id = scanned["document"]["id"]
+        completed_job = _wait_for_job(base_url, str(scanned["id"]))
+        scanned_document_id = str(completed_job["document_id"])
+        scanned_document = _json_request(f"{base_url}/documents/{scanned_document_id}")
+        assert str(scanned_document["extractor_name"]).startswith("pypdf+tesseract")
+        assert scanned_document["page_count"] == 1
+        assert int(scanned_document["chunk_count"]) >= 1
 
         ingested = _upload_text_document(
             base_url,
@@ -303,3 +323,15 @@ def _wait_until_healthy(base_url: str, timeout: int = 30) -> None:
             pass
         time.sleep(0.25)
     raise AssertionError("Container did not become healthy after restart")
+
+
+def _wait_for_job(base_url: str, job_id: str, timeout: int = 60) -> dict[str, object]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        job = _json_request(f"{base_url}/ingestion-jobs/{job_id}")
+        if job["status"] == "completed":
+            return job
+        if job["status"] == "failed":
+            raise AssertionError(f"Background ingestion failed: {job['error_message']}")
+        time.sleep(0.25)
+    raise AssertionError("Background ingestion did not complete")
