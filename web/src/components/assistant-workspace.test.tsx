@@ -109,7 +109,8 @@ describe("AssistantWorkspace", () => {
     render(<AssistantWorkspace />);
 
     expect(await screen.findByText("Knowledge base ready")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Filter by brand"), { target: { value: "Acme" } });
+    fireEvent.focus(screen.getByLabelText("Add filter by brand"));
+    fireEvent.click(screen.getByRole("option", { name: "AcmeAdd" }));
     fireEvent.change(screen.getByLabelText("Maintenance question"), {
       target: { value: "How do I isolate the pump?" },
     });

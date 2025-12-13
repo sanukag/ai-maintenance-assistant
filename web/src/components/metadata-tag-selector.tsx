@@ -7,6 +7,7 @@ type MetadataTagSelectorProps = {
   values: string[];
   options: string[];
   onChange: (values: string[]) => void;
+  allowCreate?: boolean;
 };
 
 const MAX_VALUES = 20;
@@ -16,6 +17,7 @@ export function MetadataTagSelector({
   values,
   options,
   onChange,
+  allowCreate = true,
 }: MetadataTagSelectorProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -48,7 +50,7 @@ export function MetadataTagSelector({
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Enter" || event.key === ",") {
       event.preventDefault();
-      addValue(query || suggestions[0] || "");
+      addValue(suggestions[0] || (allowCreate ? query : ""));
     } else if (event.key === "Backspace" && !query && values.length) {
       removeValue(values.at(-1) ?? "");
     } else if (event.key === "Escape") {
@@ -112,7 +114,7 @@ export function MetadataTagSelector({
         )}
       </div>
       <small className="metadata-tag-hint">
-        {values.length ? `${values.length} selected` : "Optional"} · Press Enter to add a new value
+        {values.length ? `${values.length} selected` : "Optional"} · {allowCreate ? "Press Enter to add a new value" : "Choose one or more saved values"}
       </small>
     </div>
   );
