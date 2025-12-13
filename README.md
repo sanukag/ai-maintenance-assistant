@@ -211,7 +211,8 @@ docker compose up --build --wait
 
 The worker interface is available at `http://127.0.0.1:3000`. A dedicated
 background worker processes persisted imports independently of the browser and
-API request. The API remains
+API request, while Qdrant provides indexed semantic candidate search with a
+SQLite fallback. The API remains
 available at `http://127.0.0.1:8000`, including its interactive documentation at
 `/docs`. Compose keeps documents, SQLite metadata, vectors and conversation
 history in a named volume when the containers are recreated.
@@ -225,6 +226,9 @@ docker compose down
 
 See [`docs/containerisation.md`](docs/containerisation.md) before deleting the
 volume or enabling an external embedding provider.
+
+See [`docs/indexed-vector-storage.md`](docs/indexed-vector-storage.md) for index
+synchronisation, filtering, recovery and fallback behaviour.
 
 See [`docs/document-ingestion.md`](docs/document-ingestion.md) for pipeline,
 storage and limitation details. See

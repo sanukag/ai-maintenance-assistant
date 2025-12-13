@@ -65,7 +65,7 @@ chunks. Existing matching vectors do not trigger another API request unless the
 worker changes the document metadata; that change refreshes the complete active
 vector set with the new prefix.
 
-## Local vector storage
+## Durable and indexed vector storage
 
 SQLite schema version 2 adds an `embeddings` table keyed by:
 
@@ -80,6 +80,13 @@ re-embedding later.
 
 Existing schema-version-1 databases are migrated automatically without
 changing their documents or chunks.
+
+With `AMA_VECTOR_STORE=qdrant`, the same vectors are copied into a local Qdrant
+cosine HNSW index after the SQLite transaction commits. Qdrant payload indexes
+apply document lifecycle and equipment metadata filters before approximate
+nearest-neighbour search. SQLite remains authoritative and is used as a safe
+fallback if the index is unavailable or empty. See
+[`indexed-vector-storage.md`](indexed-vector-storage.md).
 
 ## Hybrid search
 
@@ -96,7 +103,8 @@ The default search path:
    embedding and restricts both vector and text candidates with exact,
    case-insensitive SQLite comparisons. Multiple values within one category
    use OR semantics; separate populated categories use AND semantics.
-3. Ranks matching local vectors by cosine similarity.
+3. Retrieves cosine candidates from Qdrant's HNSW index, or uses the SQLite
+   cosine fallback when Qdrant is disabled or unavailable.
 4. Independently ranks exact text matches with SQLite FTS5 and BM25.
 5. Combines the two ordered candidate lists with weighted reciprocal rank
    fusion (RRF).
@@ -132,10 +140,9 @@ AMA_RETRIEVAL_TEXT_WEIGHT=1
 
 The candidate limit controls how many results each method contributes before
 fusion. The two weights can favour semantic or exact-text ranking, but they
-cannot both be zero. For the initial single-user corpus, application-level
-cosine ranking plus SQLite FTS5 keeps the runtime local and inspectable. A
-dedicated search service should be considered when corpus size makes loading
-matching vectors too slow or memory-intensive.
+cannot both be zero. Qdrant avoids loading every matching vector into the API
+process as the corpus grows; SQLite FTS5 continues to provide exact-text
+ranking.
 
 ## Model and dimensions
 

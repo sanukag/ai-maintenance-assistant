@@ -48,6 +48,7 @@ from OCR and requires `OPENAI_API_KEY`.
 | `DELETE` | `/documents/{document_id}` | Permanently remove a manual and its data |
 | `POST` | `/search` | Search embedded chunks and return source locations |
 | `POST` | `/answers` | Generate a grounded answer with verified citations |
+| `POST` | `/vector-index/rebuild` | Rebuild Qdrant from authoritative SQLite vectors |
 | `POST` | `/ingestion-jobs` | Persist an upload and queue background ingestion |
 | `GET` | `/ingestion-jobs` | List recent queued, active and completed imports |
 | `GET` | `/ingestion-jobs/{job_id}` | Poll progress and failure details |

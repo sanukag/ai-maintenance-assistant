@@ -14,6 +14,8 @@ const health = {
   embedding_model: "text-embedding-test",
   answers: "enabled",
   answer_model: "gpt-answer-test",
+  vector_store: "qdrant",
+  vector_index: "available",
 };
 
 describe("SettingsPanel", () => {
@@ -29,6 +31,7 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("tesseract 5.5.0")).toBeInTheDocument();
     expect(screen.getByText("gpt-vision-test")).toBeInTheDocument();
     expect(screen.getByText("gpt-answer-test")).toBeInTheDocument();
+    expect(screen.getByText("Qdrant HNSW index with SQLite fallback")).toBeInTheDocument();
     expect(screen.getByText("Next.js 16 · App Router")).toBeInTheDocument();
     expect(screen.getByText("OPENAI_API_KEY")).toBeInTheDocument();
     expect(screen.getByText("AMA_VISUAL_ANALYSIS_PROVIDER")).toBeInTheDocument();

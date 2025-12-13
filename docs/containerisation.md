@@ -1,7 +1,7 @@
 # Containerisation
 
 The Docker setup packages the FastAPI application and worker-facing Next.js
-interface together with a dedicated ingestion worker. Docker Compose provides
+interface together with a dedicated ingestion worker and Qdrant vector index. Docker Compose provides
 their local network, runtime configuration and persistent data volume. The API
 persists each upload before returning, while the worker performs OCR, visual
 analysis, chunking, embedding and storage in the background.
@@ -17,8 +17,8 @@ From the repository root, run:
 docker compose up --build --wait
 ```
 
-Compose builds both images, starts the services and waits until both health
-checks report success. The worker interface is available at:
+Compose builds the application images, starts all four services and waits until
+their health checks report success. The worker interface is available at:
 
 - `http://127.0.0.1:3000`
 
@@ -27,6 +27,7 @@ The API and developer documentation remain available at:
 - `http://127.0.0.1:8000/health`
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
+- `http://127.0.0.1:6333/dashboard` for local Qdrant diagnostics
 
 Follow API and ingestion-worker logs with:
 
@@ -57,6 +58,10 @@ The service would then be available at `http://127.0.0.1:8080`.
 `AMA_WEB_PORT` controls the interface port and defaults to `3000`. The Next.js
 server reaches FastAPI through `AMA_API_BASE_URL`; Compose fixes that value to
 the internal `http://api:8000` service address.
+
+`AMA_QDRANT_PORT` controls the loopback-only diagnostic port and defaults to
+`6333`. Application containers use the internal `http://qdrant:6333` address.
+Set `AMA_VECTOR_STORE=sqlite` to bypass Qdrant without removing its stored data.
 
 Embeddings and grounded answers remain disabled by default. To enable both
 OpenAI providers, set these values only in the untracked `.env` file:
@@ -111,6 +116,10 @@ The `maintenance-data` named volume contains:
 - extracted chunks and stored vectors; and
 - complete conversation and citation history.
 
+The separate `qdrant-data` volume contains the rebuildable HNSW index. SQLite
+keeps the authoritative vector copy, so losing only the Qdrant volume does not
+lose manuals and the worker rebuilds the index when it starts.
+
 Successful answers and their user questions are retained as atomic message
 pairs. Provider failures are not stored as incomplete exchanges.
 
@@ -131,10 +140,10 @@ That deletion is irreversible unless the volume has been backed up.
 
 ## Runtime safeguards
 
-The API and ingestion-worker services:
+The API, ingestion-worker and Qdrant services:
 
-- binds the host port only to `127.0.0.1`;
-- runs as the fixed non-root UID `10001`;
+- bind any host port only to `127.0.0.1`;
+- run as non-root users;
 - drops Linux capabilities and prevents privilege escalation;
 - uses a read-only root filesystem;
 - provides a bounded temporary filesystem for uploads;
@@ -162,6 +171,6 @@ Run the full image and persistence test when Docker is available:
 AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
 ```
 
-The integration test builds both images, waits for both health checks, confirms
-both processes use UID `10001`, verifies the web-to-API proxy, uploads a real
-document, restarts the API and checks the persistent volume.
+The integration test builds the application images, waits for every health
+check, confirms non-root processes, verifies the web-to-API proxy, uploads a
+real document, restarts the API and checks persistent volumes.

@@ -10,6 +10,8 @@ export type Health = {
   embedding_model: string | null;
   answers: "enabled" | "disabled";
   answer_model: string | null;
+  vector_store: "sqlite" | "qdrant";
+  vector_index: "available" | "unavailable" | "disabled";
 };
 
 export type DocumentMetadata = {
