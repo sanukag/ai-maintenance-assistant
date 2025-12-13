@@ -94,9 +94,8 @@ missing vectors without creating a duplicate document.
 ## Current limitations
 
 - The API returns complete responses rather than streaming partial text.
-- Retrieval uses weighted reciprocal rank fusion over semantic and full-text
-  candidates, without a learned reranker or a calibrated minimum score.
-- User feedback is not yet captured alongside stored conversations.
+- The optional model reranker and its minimum score must still be calibrated
+  against representative maintenance manuals.
 - The retrieval dataset does not yet measure answer correctness or
   citation entailment against representative maintenance manuals.
 - The local API has no authentication or rate limiting and must not be exposed

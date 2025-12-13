@@ -108,13 +108,16 @@ The default search path:
 4. Independently ranks exact text matches with SQLite FTS5 and BM25.
 5. Combines the two ordered candidate lists with weighted reciprocal rank
    fusion (RRF).
-6. Returns the highest-scoring children with filename, source location and their
+6. Optionally reranks a bounded fused candidate set and removes results below a
+   configured relevance threshold.
+7. Returns the highest-scoring children with filename, source location and their
    larger parent context.
 
 The public `score` is the fused RRF score normalised to a maximum of `1`. The
-API also exposes the raw `semantic_score`, `lexical_score` and
-`retrieval_methods` for diagnosis. Raw scores from the two retrieval methods
-are not added together because they have different scales.
+API also exposes `semantic_score`, `lexical_score`, `fusion_score`,
+`rerank_score` and `retrieval_methods` for diagnosis. Raw scores from the two
+first-stage methods are not added together because they have different scales.
+See [Retrieval reranking](retrieval-reranking.md) for the optional second stage.
 
 The child remains the precise retrieval anchor. Grounded answering deduplicates
 children belonging to the same parent and sends the larger parent section as
