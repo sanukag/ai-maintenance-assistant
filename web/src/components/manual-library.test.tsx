@@ -32,6 +32,16 @@ describe("ManualLibrary", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       const url = String(input);
+      if (url.includes("/ingestion-jobs")) {
+        if (options?.method === "POST") return Response.json({
+          id: "job-1", original_filename: "new-manual.txt", metadata: document.metadata,
+          status: "queued", stage: "Waiting for worker", progress: 0, attempts: 0,
+          document_id: null, error_code: null, error_message: null,
+          created_at: document.created_at, updated_at: document.created_at,
+          started_at: null, completed_at: null,
+        }, { status: 202 });
+        return Response.json({ items: [] });
+      }
       if (url.includes("/metadata/options")) return Response.json(document.metadata);
       if (url.endsWith("/revisions") && options?.method === "POST") {
         return Response.json({ status: "completed", document: replacement }, { status: 201 });
@@ -125,13 +135,13 @@ describe("ManualLibrary", () => {
     fireEvent.keyDown(machine, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "Add to library" }));
 
-    expect(await screen.findByText("Pump manual is ready to use.")).toBeInTheDocument();
+    expect(await screen.findByText(/new-manual.txt is safely queued/i)).toBeInTheDocument();
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(
-      "/api/backend/documents",
+      "/api/backend/ingestion-jobs",
       expect.objectContaining({ method: "POST", body: expect.any(FormData) }),
     ));
     const uploadCall = vi.mocked(fetch).mock.calls.find(([url, options]) =>
-      String(url).endsWith("/documents") && options?.method === "POST",
+      String(url).endsWith("/ingestion-jobs") && options?.method === "POST",
     );
     const body = uploadCall?.[1]?.body as FormData;
     expect(body.getAll("brand")).toEqual(["Acme", "Beta"]);

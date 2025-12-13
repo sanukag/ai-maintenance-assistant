@@ -8,6 +8,8 @@ import {
   type DocumentMetadata,
   type DocumentRecord,
   type MetadataOptions,
+  type IngestionJob,
+  type IngestionJobList,
   formatFileSize,
   readJson,
 } from "@/lib/api";
@@ -69,6 +71,7 @@ export function ManualLibrary() {
   const input = useRef<HTMLInputElement>(null);
   const replacementInput = useRef<HTMLInputElement>(null);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [jobs, setJobs] = useState<IngestionJob[]>([]);
   const [metadataOptions, setMetadataOptions] = useState<MetadataOptions>(emptyMetadataOptions);
   const [uploadMetadata, setUploadMetadata] = useState<DocumentMetadata>(emptyMetadata);
   const [replacementMetadata, setReplacementMetadata] = useState<DocumentMetadata>(emptyMetadata);
@@ -111,21 +114,36 @@ export function ManualLibrary() {
     setMetadataOptions(await readJson<MetadataOptions>(response));
   }
 
+  async function loadJobs() {
+    const response = await fetch("/api/backend/ingestion-jobs?limit=20", { cache: "no-store" });
+    setJobs((await readJson<IngestionJobList>(response)).items);
+  }
+
   useEffect(() => {
     let active = true;
     Promise.all([
       fetch("/api/backend/documents?limit=100", { cache: "no-store" }).then(readJson<DocumentList>),
       fetch("/api/backend/metadata/options", { cache: "no-store" }).then(readJson<MetadataOptions>),
+      fetch("/api/backend/ingestion-jobs?limit=20", { cache: "no-store" }).then(readJson<IngestionJobList>),
     ])
-      .then(([documentList, availableMetadata]) => {
+      .then(([documentList, availableMetadata, ingestionJobs]) => {
         if (!active) return;
         setDocuments(documentList.items);
         setMetadataOptions(availableMetadata);
+        setJobs(ingestionJobs.items);
       })
       .catch((error: Error) => { if (active) setMessage({ tone: "error", text: error.message }); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!jobs.some((job) => ["queued", "processing", "cancel_requested"].includes(job.status))) return;
+    const timer = window.setInterval(() => {
+      void Promise.all([loadJobs(), loadDocuments(), loadMetadataOptions()]);
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, [jobs]);
 
   function chooseFile(selectedFile: File | undefined, replace = false) {
     if (!selectedFile) return;
@@ -157,21 +175,32 @@ export function ManualLibrary() {
     body.append("file", file);
     appendMetadata(body, uploadMetadata);
     try {
-      const response = await fetch("/api/backend/documents", { method: "POST", body });
-      const result = await readJson<{ status: string; document: DocumentRecord }>(response);
+      const response = await fetch("/api/backend/ingestion-jobs", { method: "POST", body });
+      const result = await readJson<IngestionJob>(response);
       setMessage({
         tone: "success",
-        text: result.status === "already_exists" ? `${result.document.title} is already in the library.` : `${result.document.title} is ready to use.`,
+        text: `${result.original_filename} is safely queued. You can continue working while it is processed.`,
       });
+      setJobs((current) => [result, ...current]);
       setFile(null);
       setUploadMetadata(emptyMetadata);
       setMetadataFormKey((current) => current + 1);
       if (input.current) input.current.value = "";
-      await Promise.all([loadDocuments(), loadMetadataOptions()]);
+      await loadJobs();
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "The manual could not be added." });
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function controlJob(job: IngestionJob, action: "cancel" | "retry") {
+    try {
+      const response = await fetch(`/api/backend/ingestion-jobs/${job.id}/${action}`, { method: "POST" });
+      const updated = await readJson<IngestionJob>(response);
+      setJobs((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (error) {
+      setMessage({ tone: "error", text: error instanceof Error ? error.message : "The ingestion job could not be changed." });
     }
   }
 
@@ -348,6 +377,8 @@ export function ManualLibrary() {
           <div><button type="button" className="secondary-button" disabled={!catalogueValue || !catalogueReplacement.trim() || working} onClick={() => changeCatalogueValue(false)}>Rename or merge</button><button type="button" className="delete-action" disabled={!catalogueValue || working} onClick={() => changeCatalogueValue(true)}>Remove value</button></div>
         </div>
       </section>
+
+      {jobs.length > 0 && <section className="ingestion-jobs-panel" aria-labelledby="ingestion-jobs-heading"><div className="section-heading-row"><div><p className="eyebrow">Background processing</p><h2 id="ingestion-jobs-heading">Recent imports</h2></div><span>Safe to leave this page</span></div><div className="ingestion-job-list">{jobs.slice(0, 8).map((job) => <article key={job.id}><span className={`job-status job-${job.status}`}><i />{job.status.replace("_", " ")}</span><div><strong>{job.original_filename}</strong><small>{job.error_message || job.stage}</small><div className="job-progress"><i style={{ width: `${job.progress}%` }} /></div></div><span>{job.progress}%</span>{["queued", "processing", "cancel_requested"].includes(job.status) ? <button type="button" onClick={() => controlJob(job, "cancel")} disabled={job.status === "cancel_requested"}>Cancel</button> : ["failed", "cancelled"].includes(job.status) ? <button type="button" onClick={() => controlJob(job, "retry")}>Retry</button> : <span />}</article>)}</div></section>}
 
       <section className="library-section" aria-labelledby="library-heading">
         <div className="section-heading-row library-heading-row">

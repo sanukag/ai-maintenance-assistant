@@ -1,9 +1,10 @@
 # Containerisation
 
 The Docker setup packages the FastAPI application and worker-facing Next.js
-interface without changing ingestion, embedding or storage behaviour. Docker
-Compose provides their local network, runtime configuration and persistent data
-volume.
+interface together with a dedicated ingestion worker. Docker Compose provides
+their local network, runtime configuration and persistent data volume. The API
+persists each upload before returning, while the worker performs OCR, visual
+analysis, chunking, embedding and storage in the background.
 
 The API image also installs Tesseract with English language data. OCR remains
 fully local and is used only for PDF pages without text and for image manuals.
@@ -27,10 +28,10 @@ The API and developer documentation remain available at:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
 
-Follow the service logs with:
+Follow API and ingestion-worker logs with:
 
 ```bash
-docker compose logs --follow api
+docker compose logs --follow api worker
 ```
 
 Follow the interface logs with `docker compose logs --follow web`.
@@ -106,6 +107,7 @@ The `maintenance-data` named volume contains:
 
 - the SQLite database;
 - managed copies of ingested documents;
+- queued and failed uploads retained for recovery or retry;
 - extracted chunks and stored vectors; and
 - complete conversation and citation history.
 
@@ -129,7 +131,7 @@ That deletion is irreversible unless the volume has been backed up.
 
 ## Runtime safeguards
 
-The initial Compose service:
+The API and ingestion-worker services:
 
 - binds the host port only to `127.0.0.1`;
 - runs as the fixed non-root UID `10001`;

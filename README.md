@@ -203,13 +203,15 @@ it to an untrusted network.
 
 ## Run with Docker
 
-Build the image and start the API with Docker Compose:
+Build the images and start the application with Docker Compose:
 
 ```bash
 docker compose up --build --wait
 ```
 
-The worker interface is available at `http://127.0.0.1:3000`. The API remains
+The worker interface is available at `http://127.0.0.1:3000`. A dedicated
+background worker processes persisted imports independently of the browser and
+API request. The API remains
 available at `http://127.0.0.1:8000`, including its interactive documentation at
 `/docs`. Compose keeps documents, SQLite metadata, vectors and conversation
 history in a named volume when the containers are recreated.

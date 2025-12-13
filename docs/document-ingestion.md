@@ -121,7 +121,12 @@ The API key is read from the environment and is never stored in the database.
 
 ## Outcomes and errors
 
-A successful request returns either `completed` or `already_exists`. Failures
+The web interface uses a durable background queue. Uploads return `202 queued`,
+then move through validation, extraction, normalisation, chunking, embedding and
+storage stages. Progress survives API restarts, interrupted work returns to the
+queue when the worker restarts, and failed or cancelled uploads can be retried.
+The synchronous CLI and compatibility API return either `completed` or
+`already_exists`. Failures
 use stable codes such as `unsupported_type`, `file_too_large`,
 `invalid_document`, `encrypted_document`, `no_extractable_text`,
 `ocr_unavailable`, `ocr_timed_out`, `ocr_failed`, `embedding_failed` and
@@ -146,7 +151,9 @@ available to application logging without exposing document content.
 - Text and Markdown documents must use UTF-8 encoding.
 - Exact duplicates are reused rather than installed as a new revision; changed
   classifications update that record and refresh its active vectors.
-- Ingestion runs synchronously; there is no background processing queue yet.
+- One worker processes jobs sequentially by default. Additional workers can
+  share the queue safely, though provider and SQLite capacity should be measured
+  before scaling them.
 - Local hybrid ranking calculates vector similarity in the application process
   and exact-text ranking with SQLite FTS5; this is intended for an initial small
   corpus.
