@@ -1171,6 +1171,59 @@ class LocalDocumentStore:
             )
         return tuple(results)
 
+    def hydrate_vector_results(
+        self,
+        scores: Sequence[tuple[str, float]],
+        *,
+        model: str,
+    ) -> tuple[VectorSearchResult, ...]:
+        """Hydrate indexed chunk identifiers from the authoritative SQLite store."""
+
+        if not scores:
+            return ()
+        self.initialise()
+        identifiers = [chunk_id for chunk_id, _score in scores]
+        placeholders = ",".join("?" for _ in identifiers)
+        with self._connection() as connection:
+            rows = connection.execute(
+                f"""SELECT chunks.* FROM chunks
+                    JOIN documents ON documents.id = chunks.document_id
+                    WHERE chunks.id IN ({placeholders})
+                      AND documents.lifecycle_status = 'current'""",
+                identifiers,
+            ).fetchall()
+        chunks = {row["id"]: self._chunk_from_row(row) for row in rows}
+        documents: dict[str, StoredDocument] = {}
+        parents: dict[str, StoredParentChunk | None] = {}
+        results: list[VectorSearchResult] = []
+        for chunk_id, score in scores:
+            chunk = chunks.get(chunk_id)
+            if chunk is None:
+                continue
+            document = documents.get(chunk.document_id)
+            if document is None:
+                document = self.get_document(chunk.document_id)
+                if document is None:
+                    continue
+                documents[chunk.document_id] = document
+            parent = None
+            if chunk.parent_id is not None:
+                if chunk.parent_id not in parents:
+                    parents[chunk.parent_id] = self.get_parent_chunk(chunk.parent_id)
+                parent = parents[chunk.parent_id]
+            results.append(
+                VectorSearchResult(
+                    score=score,
+                    model=model,
+                    chunk=chunk,
+                    document=document,
+                    parent=parent,
+                    semantic_score=score,
+                    retrieval_methods=("semantic",),
+                )
+            )
+        return tuple(results)
+
     def search_text(
         self,
         query_text: str,

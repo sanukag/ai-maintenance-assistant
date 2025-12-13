@@ -154,9 +154,9 @@ available to application logging without exposing document content.
 - One worker processes jobs sequentially by default. Additional workers can
   share the queue safely, though provider and SQLite capacity should be measured
   before scaling them.
-- Local hybrid ranking calculates vector similarity in the application process
-  and exact-text ranking with SQLite FTS5; this is intended for an initial small
-  corpus.
+- Qdrant accelerates semantic candidate search when enabled. SQLite retains a
+  complete vector copy and performs the fallback scan; exact-text ranking uses
+  SQLite FTS5.
 - Ingestion is intended for a local, single-user process in this version.
 
 These limitations keep the first implementation observable and testable while

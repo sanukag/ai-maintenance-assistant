@@ -62,6 +62,34 @@ def test_service_returns_existing_document_for_duplicate(tmp_path: Path) -> None
     assert second.document.id == first.document.id
 
 
+def test_service_synchronises_external_index_after_durable_changes(tmp_path: Path) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text("Inspect the pump seal.", encoding="utf-8")
+
+    class RecordingIndex:
+        def __init__(self) -> None:
+            self.indexed: list[str] = []
+
+        def index_document(self, document_id: str) -> int:
+            self.indexed.append(document_id)
+            return 1
+
+        def remove_document(self, _document_id: str) -> None:
+            return None
+
+    index = RecordingIndex()
+    service = IngestionService(
+        _settings(tmp_path),
+        embedding_provider=KeywordEmbeddingProvider(),
+        vector_index=index,  # type: ignore[arg-type]
+    )
+
+    document = service.ingest(path, DocumentMetadata(brand="Acme")).document
+    service.update_metadata(document.id, DocumentMetadata(brand="Northwind"))
+
+    assert index.indexed == [document.id, document.id]
+
+
 def test_service_embeds_metadata_and_refreshes_changed_duplicate_metadata(
     tmp_path: Path,
 ) -> None:

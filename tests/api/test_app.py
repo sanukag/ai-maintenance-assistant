@@ -53,6 +53,8 @@ def test_health_reports_local_services(tmp_path: Path) -> None:
         "embedding_model": None,
         "answers": "disabled",
         "answer_model": None,
+        "vector_store": "sqlite",
+        "vector_index": "disabled",
     }
     assert (tmp_path / "data" / "maintenance-assistant.db").is_file()
 
@@ -475,11 +477,20 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
         "/documents/{document_id}/reindex",
         "/documents/{document_id}/revisions",
         "/search",
+        "/vector-index/rebuild",
         "/answers",
         "/conversations",
         "/conversations/{conversation_id}",
         "/conversations/{conversation_id}/messages/{message_id}/feedback",
     }
+
+
+def test_vector_index_rebuild_requires_qdrant_mode(tmp_path: Path) -> None:
+    application = create_app(settings=_settings(tmp_path), embedding_provider=None)
+    with TestClient(application) as client:
+        response = client.post("/vector-index/rebuild")
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "vector_index_disabled"
 
 
 def test_manual_revision_archive_reindex_and_delete_workflow(tmp_path: Path) -> None:

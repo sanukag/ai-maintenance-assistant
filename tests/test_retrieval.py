@@ -9,6 +9,7 @@ from maintenance_assistant.ingestion import (
     LocalDocumentStore,
 )
 from maintenance_assistant.retrieval import HybridSearchService, VectorSearchService
+from maintenance_assistant.vector_index import VectorIndexError
 from maintenance_assistant.vision import VisualAnalysis, VisualType
 from tests.fakes import FixedVisualAnalysisProvider, KeywordEmbeddingProvider
 from tests.ingestion.pdf_factory import write_diagram_pdf
@@ -53,6 +54,39 @@ def test_vector_search_rejects_empty_query(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="query"):
         service.search("  ")
+
+
+def test_vector_search_uses_indexed_ids_and_falls_back_when_qdrant_fails(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "pump.txt"
+    path.write_text("Pump seal replacement.", encoding="utf-8")
+    settings = Settings(data_directory=tmp_path / "data")
+    provider = KeywordEmbeddingProvider()
+    result = IngestionService(settings, embedding_provider=provider).ingest(path)
+    store = LocalDocumentStore(settings.data_directory)
+    chunk = store.list_chunks(result.document.id)[0]
+
+    class FakeIndex:
+        def __init__(self) -> None:
+            self.fail = False
+
+        def search(self, *_args: object, **_kwargs: object):
+            if self.fail:
+                raise VectorIndexError("offline")
+            return ((chunk.id, 0.91),)
+
+    index = FakeIndex()
+    search = VectorSearchService(store, provider, index)  # type: ignore[arg-type]
+
+    indexed = search.search("pump", limit=1)
+    index.fail = True
+    fallback = search.search("pump", limit=1)
+
+    assert indexed[0].chunk.id == chunk.id
+    assert indexed[0].score == pytest.approx(0.91)
+    assert fallback[0].chunk.id == chunk.id
+    assert fallback[0].score == pytest.approx(1.0)
 
 
 def test_hybrid_search_fuses_exact_text_with_semantic_candidates(
