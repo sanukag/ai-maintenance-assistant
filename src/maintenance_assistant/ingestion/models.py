@@ -287,6 +287,8 @@ class VectorSearchResult:
     semantic_score: float | None = None
     lexical_score: float | None = None
     retrieval_methods: tuple[str, ...] = ()
+    fusion_score: float | None = None
+    rerank_score: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

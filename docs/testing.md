@@ -40,6 +40,8 @@ The project tests ingestion at three levels:
   re-indexing and evidence-context deduplication.
 - Hybrid-retrieval tests verify weighted reciprocal rank fusion, semantic-only
   and text-only modes, document filtering and lifecycle exclusion.
+- Reranking tests verify typed provider requests, exact candidate-ID validation,
+  minimum-score filtering, diagnostic scores and fused-order fallback.
 
 Run the complete suite with:
 

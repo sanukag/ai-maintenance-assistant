@@ -40,6 +40,7 @@ export function SettingsPanel() {
     { label: "Visual analysis", value: health?.visual_analysis === "available" ? "Available" : health?.visual_analysis === "disabled" ? "Disabled" : "Unavailable", detail: health?.visual_analysis_model ?? "No model configured", available: health?.visual_analysis === "available" },
     { label: "Embeddings", value: health?.embeddings === "enabled" ? "Enabled" : "Disabled", detail: health?.embedding_model ?? "No model configured", available: health?.embeddings === "enabled" },
     { label: "Vector index", value: health?.vector_index === "available" ? "Available" : health?.vector_index === "disabled" ? "SQLite mode" : "Fallback active", detail: health?.vector_store === "qdrant" ? "Qdrant HNSW index with SQLite fallback" : "SQLite cosine search", available: health?.vector_index !== "unavailable" },
+    { label: "Evidence reranking", value: health?.reranking === "enabled" ? "Enabled" : "Disabled", detail: health?.rerank_model ?? "Fused retrieval order", available: health?.reranking === "enabled" },
     { label: "Answer generation", value: health?.answers === "enabled" ? "Enabled" : "Disabled", detail: health?.answer_model ?? "No model configured", available: health?.answers === "enabled" },
   ];
 
@@ -78,7 +79,7 @@ export function SettingsPanel() {
 
         <section className="config-card enterprise-config-card">
           <p className="eyebrow">Configuration</p><h2>Environment variables</h2><p>Provider settings are managed in the service environment. Restart the service after changing them.</p>
-          <div className="code-block"><code>AMA_OCR_PROVIDER</code><code>AMA_VISUAL_ANALYSIS_PROVIDER</code><code>AMA_EMBEDDING_PROVIDER</code><code>AMA_VECTOR_STORE</code><code>AMA_ANSWER_PROVIDER</code><code>OPENAI_API_KEY</code></div>
+          <div className="code-block"><code>AMA_OCR_PROVIDER</code><code>AMA_VISUAL_ANALYSIS_PROVIDER</code><code>AMA_EMBEDDING_PROVIDER</code><code>AMA_VECTOR_STORE</code><code>AMA_RERANK_PROVIDER</code><code>AMA_ANSWER_PROVIDER</code><code>OPENAI_API_KEY</code></div>
         </section>
       </div>
     </div>

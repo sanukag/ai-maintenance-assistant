@@ -56,6 +56,8 @@ class HealthResponse(BaseModel):
     answer_model: str | None
     vector_store: str
     vector_index: str
+    reranking: str
+    rerank_model: str | None
 
 
 class DocumentMetadataResponse(BaseModel):
@@ -406,6 +408,8 @@ class SearchResultResponse(BaseModel):
     score: float
     semantic_score: float | None
     lexical_score: float | None
+    fusion_score: float | None
+    rerank_score: float | None
     retrieval_methods: list[str]
     model: str
     document: DocumentResponse
@@ -420,6 +424,8 @@ class SearchResultResponse(BaseModel):
             score=result.score,
             semantic_score=result.semantic_score,
             lexical_score=result.lexical_score,
+            fusion_score=result.fusion_score,
+            rerank_score=result.rerank_score,
             retrieval_methods=list(result.retrieval_methods),
             model=result.model,
             document=DocumentResponse.from_document(result.document),

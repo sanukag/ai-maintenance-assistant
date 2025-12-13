@@ -153,8 +153,8 @@ results. Metadata fields accept either one string or an array. A document may
 match any requested value within a category, while populated categories are
 intersected case-insensitively with each other and the current-manual boundary.
 Each result
-contains its normalised hybrid score, raw semantic and lexical diagnostic
-scores, contributing `retrieval_methods`, embedding model, safe document
+contains its active score, semantic, lexical, fusion and optional reranking
+diagnostics, contributing `retrieval_methods`, embedding model, safe document
 metadata, child chunk, larger `parent_context` and available source location.
 Search returns HTTP `503` with the `embeddings_disabled` code when semantic
 retrieval is enabled but no embedding provider is configured.

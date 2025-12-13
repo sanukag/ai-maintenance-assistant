@@ -9,6 +9,7 @@ from maintenance_assistant.ingestion import (
     LocalDocumentStore,
 )
 from maintenance_assistant.retrieval import HybridSearchService, VectorSearchService
+from maintenance_assistant.reranking import RerankScore, RerankingError
 from maintenance_assistant.vector_index import VectorIndexError
 from maintenance_assistant.vision import VisualAnalysis, VisualType
 from tests.fakes import FixedVisualAnalysisProvider, KeywordEmbeddingProvider
@@ -267,3 +268,91 @@ def test_hybrid_search_rejects_invalid_queries(tmp_path: Path) -> None:
         search.search(" ")
     with pytest.raises(ValueError, match="limit"):
         search.search("pump", limit=0)
+
+
+def test_hybrid_search_reranks_candidates_and_applies_confidence_threshold(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_directory=tmp_path / "data",
+        chunk_size_tokens=30,
+        chunk_overlap_tokens=0,
+    )
+    provider = KeywordEmbeddingProvider()
+    ingestion = IngestionService(settings, embedding_provider=provider)
+    for name, text in (
+        ("general.txt", "General pump inspection guidance."),
+        ("guard.txt", "Isolate the pump before removing its guard."),
+        ("weak.txt", "Pump workshop housekeeping information."),
+    ):
+        path = tmp_path / name
+        path.write_text(text, encoding="utf-8")
+        ingestion.ingest(path)
+
+    class FixedReranker:
+        model = "test-reranker"
+
+        def rerank(self, _query: str, candidates: tuple) -> tuple[RerankScore, ...]:
+            scores = {
+                candidate.chunk.id: 0.95
+                if "guard" in candidate.chunk.text
+                else 0.1
+                for candidate in candidates
+            }
+            return tuple(RerankScore(chunk_id, score) for chunk_id, score in scores.items())
+
+    search = HybridSearchService(
+        LocalDocumentStore(settings.data_directory),
+        provider,
+        reranker=FixedReranker(),
+        rerank_candidate_limit=3,
+        rerank_min_score=0.5,
+    )
+
+    results = search.search("pump", limit=3)
+
+    assert len(results) == 1
+    assert "guard" in results[0].chunk.text
+    assert results[0].score == pytest.approx(0.95)
+    assert results[0].rerank_score == pytest.approx(0.95)
+    assert results[0].fusion_score is not None
+
+
+def test_hybrid_search_falls_back_to_fused_order_when_reranking_fails(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(data_directory=tmp_path / "data")
+    provider = KeywordEmbeddingProvider()
+    path = tmp_path / "pump.txt"
+    path.write_text("Pump isolation procedure.", encoding="utf-8")
+    IngestionService(settings, embedding_provider=provider).ingest(path)
+
+    class FailedReranker:
+        model = "failed"
+
+        def rerank(self, _query: str, _candidates: tuple) -> tuple[RerankScore, ...]:
+            raise RerankingError("offline")
+
+    result = HybridSearchService(
+        LocalDocumentStore(settings.data_directory),
+        provider,
+        reranker=FailedReranker(),
+    ).search("pump isolation", limit=1)[0]
+
+    assert result.rerank_score is None
+    assert result.score == result.fusion_score
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [{"rerank_candidate_limit": 0}, {"rerank_min_score": -0.1}, {"rerank_min_score": 1.1}],
+)
+def test_hybrid_search_rejects_invalid_reranking_configuration(
+    tmp_path: Path, arguments: dict[str, float]
+) -> None:
+    with pytest.raises(ValueError):
+        HybridSearchService(
+            LocalDocumentStore(tmp_path / "data"),
+            KeywordEmbeddingProvider(),
+            **arguments,
+        )

@@ -128,6 +128,12 @@ influence the result order. The candidate count, RRF constant and method
 weights are configurable through the `AMA_RETRIEVAL_*` settings in
 `.env.example`.
 
+An optional second-stage reranker can rescore the bounded hybrid candidate set
+and remove evidence below a configured relevance threshold before it reaches
+grounded answering. It fails safely back to fused retrieval order when the
+provider is unavailable or returns invalid scores. See
+[Retrieval reranking](docs/retrieval-reranking.md).
+
 Retrieval changes can be measured against labelled source passages with the
 local evaluation harness. A fictional starter corpus is included so the
 workflow can be exercised without committing private manuals:

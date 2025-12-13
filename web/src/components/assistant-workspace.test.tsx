@@ -32,6 +32,10 @@ const health = {
   embedding_model: "test-embedding",
   answers: "enabled",
   answer_model: "test-answer",
+  vector_store: "qdrant" as const,
+  vector_index: "available" as const,
+  reranking: "enabled" as const,
+  rerank_model: "test-reranker",
 };
 
 const citation = {

@@ -113,6 +113,8 @@ a stable local refusal with no citations.
   privacy controls and the OpenAI Responses API integration.
 - `maintenance_assistant.retrieval` combines local vector and SQLite full-text
   rankings with weighted reciprocal rank fusion.
+- `maintenance_assistant.reranking` optionally applies bounded, typed
+  second-stage relevance scoring with deterministic retrieval fallback.
 - `maintenance_assistant.answering` owns evidence labelling, the real OpenAI
   Responses API provider and citation validation.
 - `maintenance_assistant.conversations` atomically stores complete worker and

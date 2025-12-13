@@ -16,6 +16,7 @@ from maintenance_assistant.ocr import OCRProvider
 from maintenance_assistant.retrieval import HybridSearchService
 from maintenance_assistant.vision import VisualAnalysisProvider
 from maintenance_assistant.vector_index import QdrantVectorIndex, create_vector_index
+from maintenance_assistant.reranking import Reranker, create_reranker
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +35,7 @@ class ApiServices:
     answers: GroundedAnswerService | None
     answer_provider: AnswerProvider | None
     vector_index: QdrantVectorIndex | None
+    reranker: Reranker | None
 
 
 def build_services(
@@ -48,6 +50,7 @@ def build_services(
 
     configured_store = store or LocalDocumentStore(settings.data_directory)
     vector_index = create_vector_index(settings, configured_store)
+    reranker = create_reranker(settings)
     search = (
         HybridSearchService(
             configured_store,
@@ -57,6 +60,9 @@ def build_services(
             semantic_weight=settings.retrieval_semantic_weight,
             text_weight=settings.retrieval_text_weight,
             vector_index=vector_index,
+            reranker=reranker,
+            rerank_candidate_limit=settings.rerank_candidate_limit,
+            rerank_min_score=settings.rerank_min_score,
         )
         if embedding_provider is not None
         else None
@@ -83,6 +89,7 @@ def build_services(
         else None,
         answer_provider=answer_provider,
         vector_index=vector_index,
+        reranker=reranker,
     )
 
 

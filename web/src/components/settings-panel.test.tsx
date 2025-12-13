@@ -16,6 +16,8 @@ const health = {
   answer_model: "gpt-answer-test",
   vector_store: "qdrant",
   vector_index: "available",
+  reranking: "enabled",
+  rerank_model: "gpt-rerank-test",
 };
 
 describe("SettingsPanel", () => {
@@ -31,10 +33,12 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("tesseract 5.5.0")).toBeInTheDocument();
     expect(screen.getByText("gpt-vision-test")).toBeInTheDocument();
     expect(screen.getByText("gpt-answer-test")).toBeInTheDocument();
+    expect(screen.getByText("gpt-rerank-test")).toBeInTheDocument();
     expect(screen.getByText("Qdrant HNSW index with SQLite fallback")).toBeInTheDocument();
     expect(screen.getByText("Next.js 16 · App Router")).toBeInTheDocument();
     expect(screen.getByText("OPENAI_API_KEY")).toBeInTheDocument();
     expect(screen.getByText("AMA_VISUAL_ANALYSIS_PROVIDER")).toBeInTheDocument();
+    expect(screen.getByText("AMA_RERANK_PROVIDER")).toBeInTheDocument();
     expect(screen.getByText("Service status")).toBeInTheDocument();
     expect(screen.queryByText("What stays local?")).not.toBeInTheDocument();
     expect(screen.queryByText(/replace-me|sk-/)).not.toBeInTheDocument();
