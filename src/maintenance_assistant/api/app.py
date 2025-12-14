@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import Lock
 from typing import cast
 
 from fastapi import FastAPI, Request
@@ -17,6 +18,11 @@ from maintenance_assistant.api.routes import router
 from maintenance_assistant.api.schemas import ErrorDetail, ErrorResponse
 from maintenance_assistant.api.services import build_services
 from maintenance_assistant.config import Settings
+from maintenance_assistant.credentials import (
+    CredentialError,
+    CredentialStore,
+    settings_with_credentials,
+)
 from maintenance_assistant.embeddings import EmbeddingProvider, create_embedding_provider
 from maintenance_assistant.ingestion import (
     DocumentLifecycleError,
@@ -56,23 +62,25 @@ def create_app(
         configured_settings.data_directory,
         configured_settings.sqlite_busy_timeout_ms,
     )
+    credential_store = CredentialStore(configured_store)
+    runtime_settings = settings_with_credentials(configured_settings, credential_store)
     configured_embedding_provider = (
-        create_embedding_provider(configured_settings, configured_store)
+        create_embedding_provider(runtime_settings, configured_store)
         if embedding_provider is _CONFIGURED_EMBEDDING_PROVIDER
         else cast(EmbeddingProvider | None, embedding_provider)
     )
     configured_answer_provider = (
-        create_answer_provider(configured_settings)
+        create_answer_provider(runtime_settings)
         if answer_provider is _CONFIGURED_ANSWER_PROVIDER
         else cast(AnswerProvider | None, answer_provider)
     )
     configured_ocr_provider = (
-        create_ocr_provider(configured_settings)
+        create_ocr_provider(runtime_settings)
         if ocr_provider is _CONFIGURED_OCR_PROVIDER
         else cast(OCRProvider | None, ocr_provider)
     )
     configured_visual_analysis_provider = (
-        create_visual_analysis_provider(configured_settings)
+        create_visual_analysis_provider(runtime_settings)
         if visual_analysis_provider is _CONFIGURED_VISUAL_ANALYSIS_PROVIDER
         else cast(VisualAnalysisProvider | None, visual_analysis_provider)
     )
@@ -85,14 +93,40 @@ def create_app(
         ),
     )
     application.state.runtime_metrics = RuntimeMetrics()
+    application.state.base_settings = configured_settings
+    application.state.credential_store = credential_store
     application.state.services = build_services(
-        settings=configured_settings,
+        settings=runtime_settings,
         embedding_provider=configured_embedding_provider,
         answer_provider=configured_answer_provider,
         store=configured_store,
         ocr_provider=configured_ocr_provider,
         visual_analysis_provider=configured_visual_analysis_provider,
     )
+    reload_lock = Lock()
+
+    def reload_services():
+        with reload_lock:
+            refreshed_settings = settings_with_credentials(
+                application.state.base_settings,
+                application.state.credential_store,
+            )
+            application.state.services = build_services(
+                settings=refreshed_settings,
+                embedding_provider=create_embedding_provider(
+                    refreshed_settings,
+                    configured_store,
+                ),
+                answer_provider=create_answer_provider(refreshed_settings),
+                store=configured_store,
+                ocr_provider=create_ocr_provider(refreshed_settings),
+                visual_analysis_provider=create_visual_analysis_provider(
+                    refreshed_settings
+                ),
+            )
+            return application.state.services
+
+    application.state.reload_services = reload_services
     application.include_router(router)
 
     @application.middleware("http")
@@ -140,6 +174,12 @@ def create_app(
     @application.exception_handler(AnsweringError)
     async def handle_answering_error(_: Request, error: AnsweringError) -> JSONResponse:
         return _error_response(502, error.code.value, error.message)
+
+    @application.exception_handler(CredentialError)
+    async def handle_credential_error(
+        _: Request, error: CredentialError
+    ) -> JSONResponse:
+        return _error_response(500, "credential_storage_failed", str(error))
 
     return application
 

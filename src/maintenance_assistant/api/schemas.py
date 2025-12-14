@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 from maintenance_assistant.answering import AnswerCitation, GroundedAnswer
 from maintenance_assistant.conversations import (
@@ -14,6 +14,7 @@ from maintenance_assistant.conversations import (
     ConversationMessage,
     ResponseFeedback,
 )
+from maintenance_assistant.credentials import CredentialStatus
 from maintenance_assistant.ingestion import (
     DocumentLifecycleStatus,
     DocumentMetadata,
@@ -94,6 +95,56 @@ class RuntimeMetricsResponse(BaseModel):
     routes: list[RouteMetricResponse]
     embedding_cache: EmbeddingCacheMetricResponse
     sqlite: SQLiteRuntimeResponse
+
+
+class CredentialUpdateRequest(BaseModel):
+    """A secret accepted only for encrypted server-side persistence."""
+
+    value: SecretStr
+
+    @field_validator("value")
+    @classmethod
+    def validate_api_key(cls, value: SecretStr) -> SecretStr:
+        secret = value.get_secret_value().strip()
+        if len(secret) < 8:
+            raise ValueError("API key must contain at least 8 characters")
+        if len(secret) > 2_048:
+            raise ValueError("API key must not exceed 2048 characters")
+        if any(character.isspace() for character in secret):
+            raise ValueError("API key must not contain whitespace")
+        return SecretStr(secret)
+
+
+class CredentialStatusResponse(BaseModel):
+    """Masked configuration state which never includes the complete secret."""
+
+    name: str
+    label: str
+    description: str
+    used_by: list[str]
+    configured: bool
+    source: str
+    masked_value: str | None
+    updated_at: datetime | None
+    can_delete: bool
+
+    @classmethod
+    def from_status(cls, status: CredentialStatus) -> CredentialStatusResponse:
+        return cls(
+            name=status.name.value,
+            label=status.label,
+            description=status.description,
+            used_by=list(status.used_by),
+            configured=status.configured,
+            source=status.source,
+            masked_value=status.masked_value,
+            updated_at=status.updated_at,
+            can_delete=status.can_delete,
+        )
+
+
+class CredentialListResponse(BaseModel):
+    items: list[CredentialStatusResponse]
 
 
 class DocumentMetadataResponse(BaseModel):

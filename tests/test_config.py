@@ -221,7 +221,6 @@ def test_settings_reject_invalid_ocr_configuration(
     "environment",
     [
         {"AMA_VISUAL_ANALYSIS_PROVIDER": "local"},
-        {"AMA_VISUAL_ANALYSIS_PROVIDER": "openai"},
         {"AMA_VISUAL_ANALYSIS_MODEL": " "},
         {"AMA_VISUAL_ANALYSIS_DETAIL": "maximum"},
         {"AMA_VISUAL_ANALYSIS_RENDER_DPI": "99"},
@@ -244,7 +243,6 @@ def test_settings_reject_invalid_visual_analysis_configuration(
     "environment",
     [
         {"AMA_EMBEDDING_PROVIDER": "unknown"},
-        {"AMA_EMBEDDING_PROVIDER": "openai"},
         {"AMA_EMBEDDING_DIMENSIONS": "0"},
         {"AMA_EMBEDDING_BATCH_SIZE": "2049"},
         {"AMA_EMBEDDING_MODEL": " "},
@@ -264,7 +262,6 @@ def test_settings_reject_invalid_embedding_configuration(
     "environment",
     [
         {"AMA_ANSWER_PROVIDER": "unknown"},
-        {"AMA_ANSWER_PROVIDER": "openai"},
         {"AMA_ANSWER_MODEL": " "},
         {"AMA_ANSWER_MAX_OUTPUT_TOKENS": "0"},
     ],
@@ -280,7 +277,6 @@ def test_settings_reject_invalid_answer_configuration(
     "environment",
     [
         {"AMA_RERANK_PROVIDER": "unknown"},
-        {"AMA_RERANK_PROVIDER": "openai"},
         {"AMA_RERANK_MODEL": " "},
         {"AMA_RERANK_CANDIDATE_LIMIT": "0"},
         {"AMA_RERANK_CANDIDATE_LIMIT": "51"},

@@ -9,6 +9,10 @@ import sys
 from typing import Sequence
 
 from maintenance_assistant.config import Settings
+from maintenance_assistant.credentials import (
+    CredentialStore,
+    settings_with_credentials,
+)
 from maintenance_assistant.embeddings import (
     EmbeddingProvider,
     create_embedding_provider,
@@ -49,6 +53,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         store = LocalDocumentStore(
             settings.data_directory, settings.sqlite_busy_timeout_ms
         )
+        settings = settings_with_credentials(settings, CredentialStore(store))
         provider = create_embedding_provider(settings, store)
         result = IngestionService(
             settings,
@@ -107,6 +112,7 @@ def search_main(argv: Sequence[str] | None = None) -> int:
         store = LocalDocumentStore(
             settings.data_directory, settings.sqlite_busy_timeout_ms
         )
+        settings = settings_with_credentials(settings, CredentialStore(store))
         provider = create_embedding_provider(settings, store)
         if provider is None:
             raise ValueError(
@@ -184,6 +190,7 @@ def evaluation_main(argv: Sequence[str] | None = None) -> int:
         store = LocalDocumentStore(
             settings.data_directory, settings.sqlite_busy_timeout_ms
         )
+        settings = settings_with_credentials(settings, CredentialStore(store))
         provider = create_embedding_provider(settings, store)
         if provider is None:
             raise ValueError(

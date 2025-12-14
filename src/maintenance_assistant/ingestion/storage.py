@@ -306,7 +306,16 @@ CREATE INDEX IF NOT EXISTS embedding_cache_access_idx
 ON embedding_cache(last_accessed_at);
 """
 
-_CURRENT_SCHEMA_VERSION = 12
+_MIGRATION_VERSION_13 = """
+CREATE TABLE IF NOT EXISTS external_credentials (
+    name TEXT PRIMARY KEY,
+    encrypted_value BLOB NOT NULL CHECK (length(encrypted_value) > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+"""
+
+_CURRENT_SCHEMA_VERSION = 13
 
 
 class LocalDocumentStore:
@@ -396,6 +405,10 @@ class LocalDocumentStore:
                         connection.executescript(_MIGRATION_VERSION_12)
                         connection.execute("PRAGMA user_version = 12")
                         version = 12
+                    if version == 12:
+                        connection.executescript(_MIGRATION_VERSION_13)
+                        connection.execute("PRAGMA user_version = 13")
+                        version = 13
                     if version != _CURRENT_SCHEMA_VERSION:
                         raise sqlite3.DatabaseError(
                             f"Unsupported database schema version: {version}"

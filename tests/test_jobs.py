@@ -39,6 +39,30 @@ def test_worker_completes_a_persisted_job_and_removes_staged_upload(tmp_path: Pa
     assert jobs.store.get_document(completed.document_id).metadata.brand == ("Acme",)  # type: ignore[union-attr]
 
 
+def test_worker_refreshes_credentials_before_processing_each_job(tmp_path: Path) -> None:
+    jobs, source = _queue(tmp_path)
+    job = jobs.enqueue(source, source.name, DocumentMetadata())
+    settings = Settings(data_directory=tmp_path / "data")
+    initial = IngestionService(settings, store=jobs.store)
+    refresh_calls = 0
+
+    def refresh() -> IngestionService:
+        nonlocal refresh_calls
+        refresh_calls += 1
+        return IngestionService(
+            settings,
+            store=jobs.store,
+            embedding_provider=KeywordEmbeddingProvider(),
+        )
+
+    assert IngestionWorker(jobs, initial, refresh).run_once() is True
+
+    completed = jobs.get(job.id)
+    assert completed is not None and completed.document_id is not None
+    assert refresh_calls == 1
+    assert len(jobs.store.list_embeddings(completed.document_id)) == 1
+
+
 def test_cancelled_queued_job_can_be_retried(tmp_path: Path) -> None:
     jobs, source = _queue(tmp_path)
     job = jobs.enqueue(source, source.name, DocumentMetadata())
