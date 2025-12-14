@@ -9,6 +9,11 @@ from fastapi import Request
 from maintenance_assistant.answering import AnswerProvider, GroundedAnswerService
 from maintenance_assistant.config import Settings
 from maintenance_assistant.conversations import ConversationStore
+from maintenance_assistant.diagnostic_planner import (
+    DiagnosticProvider,
+    GuidedDiagnosticService,
+)
+from maintenance_assistant.diagnostics import DiagnosticStore
 from maintenance_assistant.embeddings import EmbeddingProvider
 from maintenance_assistant.ingestion import IngestionService, LocalDocumentStore
 from maintenance_assistant.jobs import IngestionJobStore
@@ -26,6 +31,9 @@ class ApiServices:
     settings: Settings
     store: LocalDocumentStore
     conversations: ConversationStore
+    diagnostic_store: DiagnosticStore
+    diagnostics: GuidedDiagnosticService | None
+    diagnostic_provider: DiagnosticProvider | None
     ingestion: IngestionService
     jobs: IngestionJobStore
     ocr_provider: OCRProvider | None
@@ -42,6 +50,7 @@ def build_services(
     settings: Settings,
     embedding_provider: EmbeddingProvider | None,
     answer_provider: AnswerProvider | None,
+    diagnostic_provider: DiagnosticProvider | None = None,
     store: LocalDocumentStore | None = None,
     ocr_provider: OCRProvider | None = None,
     visual_analysis_provider: VisualAnalysisProvider | None = None,
@@ -67,10 +76,18 @@ def build_services(
         if embedding_provider is not None
         else None
     )
+    diagnostic_store = DiagnosticStore(configured_store)
     return ApiServices(
         settings=settings,
         store=configured_store,
         conversations=ConversationStore(configured_store),
+        diagnostic_store=diagnostic_store,
+        diagnostics=(
+            GuidedDiagnosticService(search, diagnostic_provider, diagnostic_store)
+            if search is not None and diagnostic_provider is not None
+            else None
+        ),
+        diagnostic_provider=diagnostic_provider,
         ingestion=IngestionService(
             settings,
             store=configured_store,

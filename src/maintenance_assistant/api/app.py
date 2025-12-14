@@ -23,6 +23,11 @@ from maintenance_assistant.credentials import (
     CredentialStore,
     settings_with_credentials,
 )
+from maintenance_assistant.diagnostic_planner import (
+    DiagnosticPlanningError,
+    DiagnosticProvider,
+    create_diagnostic_provider,
+)
 from maintenance_assistant.embeddings import EmbeddingProvider, create_embedding_provider
 from maintenance_assistant.ingestion import (
     DocumentLifecycleError,
@@ -40,6 +45,7 @@ from maintenance_assistant.vision import (
 
 _CONFIGURED_EMBEDDING_PROVIDER = object()
 _CONFIGURED_ANSWER_PROVIDER = object()
+_CONFIGURED_DIAGNOSTIC_PROVIDER = object()
 _CONFIGURED_OCR_PROVIDER = object()
 _CONFIGURED_VISUAL_ANALYSIS_PROVIDER = object()
 
@@ -49,6 +55,9 @@ def create_app(
     settings: Settings | None = None,
     embedding_provider: EmbeddingProvider | None | object = _CONFIGURED_EMBEDDING_PROVIDER,
     answer_provider: AnswerProvider | None | object = _CONFIGURED_ANSWER_PROVIDER,
+    diagnostic_provider: DiagnosticProvider | None | object = (
+        _CONFIGURED_DIAGNOSTIC_PROVIDER
+    ),
     ocr_provider: OCRProvider | None | object = _CONFIGURED_OCR_PROVIDER,
     visual_analysis_provider: VisualAnalysisProvider | None | object = (
         _CONFIGURED_VISUAL_ANALYSIS_PROVIDER
@@ -73,6 +82,11 @@ def create_app(
         create_answer_provider(runtime_settings)
         if answer_provider is _CONFIGURED_ANSWER_PROVIDER
         else cast(AnswerProvider | None, answer_provider)
+    )
+    configured_diagnostic_provider = (
+        create_diagnostic_provider(runtime_settings)
+        if diagnostic_provider is _CONFIGURED_DIAGNOSTIC_PROVIDER
+        else cast(DiagnosticProvider | None, diagnostic_provider)
     )
     configured_ocr_provider = (
         create_ocr_provider(runtime_settings)
@@ -99,6 +113,7 @@ def create_app(
         settings=runtime_settings,
         embedding_provider=configured_embedding_provider,
         answer_provider=configured_answer_provider,
+        diagnostic_provider=configured_diagnostic_provider,
         store=configured_store,
         ocr_provider=configured_ocr_provider,
         visual_analysis_provider=configured_visual_analysis_provider,
@@ -118,6 +133,7 @@ def create_app(
                     configured_store,
                 ),
                 answer_provider=create_answer_provider(refreshed_settings),
+                diagnostic_provider=create_diagnostic_provider(refreshed_settings),
                 store=configured_store,
                 ocr_provider=create_ocr_provider(refreshed_settings),
                 visual_analysis_provider=create_visual_analysis_provider(
@@ -174,6 +190,12 @@ def create_app(
     @application.exception_handler(AnsweringError)
     async def handle_answering_error(_: Request, error: AnsweringError) -> JSONResponse:
         return _error_response(502, error.code.value, error.message)
+
+    @application.exception_handler(DiagnosticPlanningError)
+    async def handle_diagnostic_error(
+        _: Request, error: DiagnosticPlanningError
+    ) -> JSONResponse:
+        return _error_response(502, "diagnostic_planning_failed", str(error))
 
     @application.exception_handler(CredentialError)
     async def handle_credential_error(

@@ -124,8 +124,22 @@ class DiagnosticStore:
         document_id: str | None = None,
         metadata: DocumentMetadata = DocumentMetadata(),
         safety_status: DiagnosticSafetyStatus = DiagnosticSafetyStatus.UNKNOWN,
+        assistant_message: str | None = None,
+        action: DiagnosticAction | None = None,
+        response_state: DiagnosticState | None = None,
+        response_payload: dict[str, Any] | None = None,
+        status: DiagnosticStatus = DiagnosticStatus.ACTIVE,
     ) -> DiagnosticSessionDetail:
         message = _normalise_text(initial_message, "Initial diagnostic message", 2_000)
+        if (assistant_message is None) != (action is None):
+            raise ValueError("Assistant message and action must be supplied together")
+        assistant_content = (
+            _normalise_text(assistant_message, "Diagnostic response", 8_000)
+            if assistant_message is not None
+            else None
+        )
+        if assistant_content is not None and response_state is None:
+            raise ValueError("A completed initial response requires diagnostic state")
         self.document_store.initialise()
         if document_id is not None and self.document_store.get_document(document_id) is None:
             raise KeyError(document_id)
@@ -133,7 +147,13 @@ class DiagnosticStore:
         turn_id = str(uuid4())
         now = datetime.now(UTC)
         title = " ".join(message.split())[:80]
-        state = DiagnosticState(symptoms=(message,), summary=message)
+        state = response_state or DiagnosticState(symptoms=(message,), summary=message)
+        try:
+            payload_json = json.dumps(
+                response_payload or {}, ensure_ascii=False, separators=(",", ":")
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("Diagnostic response must be JSON serialisable") from error
         try:
             with self.document_store._connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
@@ -145,7 +165,7 @@ class DiagnosticStore:
                     (
                         session_id,
                         title,
-                        DiagnosticStatus.ACTIVE.value,
+                        status.value,
                         safety_status.value,
                         document_id,
                         _metadata_json(metadata),
@@ -161,6 +181,17 @@ class DiagnosticStore:
                        ) VALUES (?, ?, 0, ?, ?, NULL, '{}', ?)""",
                     (turn_id, session_id, DiagnosticRole.USER.value, message, now.isoformat()),
                 )
+                if assistant_content is not None and action is not None:
+                    connection.execute(
+                        """INSERT INTO diagnostic_turns (
+                               id, session_id, sequence, role, content, action,
+                               payload_json, created_at
+                           ) VALUES (?, ?, 1, ?, ?, ?, ?, ?)""",
+                        (
+                            str(uuid4()), session_id, DiagnosticRole.ASSISTANT.value,
+                            assistant_content, action.value, payload_json, now.isoformat(),
+                        ),
+                    )
         except sqlite3.Error as error:
             raise _storage_error("The diagnostic session could not be created", error)
         detail = self.get_session(session_id)
@@ -238,6 +269,65 @@ class DiagnosticStore:
             raise
         except sqlite3.Error as error:
             raise _storage_error("The diagnostic exchange could not be saved", error)
+        detail = self.get_session(session_id)
+        if detail is None:  # pragma: no cover - defensive postcondition
+            raise _storage_error("The diagnostic session could not be read")
+        return detail
+
+    def append_assistant_response(
+        self,
+        session_id: str,
+        *,
+        assistant_message: str,
+        action: DiagnosticAction,
+        state: DiagnosticState,
+        payload: dict[str, Any],
+        status: DiagnosticStatus = DiagnosticStatus.ACTIVE,
+    ) -> DiagnosticSessionDetail:
+        """Complete a newly created session without duplicating its first user turn."""
+
+        assistant_content = _normalise_text(
+            assistant_message, "Diagnostic response", 8_000
+        )
+        now = datetime.now(UTC)
+        try:
+            payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            state_json = _state_json(state)
+        except (TypeError, ValueError) as error:
+            raise ValueError("Diagnostic state must be JSON serialisable") from error
+        try:
+            with self.document_store._connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute(
+                    "SELECT id FROM diagnostic_sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+                if row is None:
+                    raise KeyError(session_id)
+                next_sequence = connection.execute(
+                    """SELECT COALESCE(MAX(sequence), -1) + 1
+                       FROM diagnostic_turns WHERE session_id = ?""",
+                    (session_id,),
+                ).fetchone()[0]
+                connection.execute(
+                    """INSERT INTO diagnostic_turns (
+                           id, session_id, sequence, role, content, action,
+                           payload_json, created_at
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        str(uuid4()), session_id, next_sequence,
+                        DiagnosticRole.ASSISTANT.value, assistant_content,
+                        action.value, payload_json, now.isoformat(),
+                    ),
+                )
+                connection.execute(
+                    """UPDATE diagnostic_sessions
+                       SET status = ?, state_json = ?, updated_at = ? WHERE id = ?""",
+                    (status.value, state_json, now.isoformat(), session_id),
+                )
+        except KeyError:
+            raise
+        except sqlite3.Error as error:
+            raise _storage_error("The diagnostic response could not be saved", error)
         detail = self.get_session(session_id)
         if detail is None:  # pragma: no cover - defensive postcondition
             raise _storage_error("The diagnostic session could not be read")

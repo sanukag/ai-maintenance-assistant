@@ -1,3 +1,4 @@
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 
@@ -74,6 +75,24 @@ def test_exchange_atomically_updates_state_and_turn_ledger(tmp_path: Path) -> No
     assert updated.session.safety_status == DiagnosticSafetyStatus.CONFIRMED_SAFE
 
 
+def test_initial_assistant_response_does_not_duplicate_first_user_turn(
+    tmp_path: Path,
+) -> None:
+    diagnostics = _store(tmp_path)
+    created = diagnostics.create_session("Motor will not start")
+
+    updated = diagnostics.append_assistant_response(
+        created.session.id,
+        assistant_message="What indication is visible on the drive?",
+        action=DiagnosticAction.REQUEST_OBSERVATION,
+        state=created.session.state,
+        payload={"requires_safety_confirmation": False},
+    )
+
+    assert [turn.role.value for turn in updated.turns] == ["user", "assistant"]
+    assert updated.turns[0].content == "Motor will not start"
+
+
 def test_sessions_list_newest_first_and_delete_cascades(tmp_path: Path) -> None:
     diagnostics = _store(tmp_path)
     first = diagnostics.create_session("First fault")
@@ -128,7 +147,7 @@ def test_schema_migration_creates_diagnostic_tables(tmp_path: Path) -> None:
     document_store = LocalDocumentStore(tmp_path / "data")
     document_store.initialise()
 
-    with sqlite3.connect(document_store.database_path) as connection:
+    with closing(sqlite3.connect(document_store.database_path)) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 14
         tables = {
             row[0]
