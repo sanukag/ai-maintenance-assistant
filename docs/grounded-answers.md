@@ -33,9 +33,9 @@ superseded or archived manual therefore cannot be selected even when its exact
 document identifier is supplied.
 
 The OpenAI implementation uses the Responses API with a Pydantic structured
-output schema. The default answer model is `gpt-5.6-terra`, selected as the
-current balance between intelligence and cost. The model is configurable so a
-deployment can make its own cost, latency and quality trade-off.
+output schema. The default answer model is `gpt-5.6-terra`. The provider is
+fixed, while the model identifier remains an environment-managed deployment
+setting.
 
 ## Grounding guarantees
 
@@ -66,14 +66,13 @@ vision model interpreted the source diagram correctly.
 
 ## Configuration
 
-Answers require semantic retrieval, so both providers must be enabled:
+Answers require semantic retrieval. Add an OpenAI API key under **Settings → API
+keys** to enable the fixed embedding and answer services. Model limits remain
+environment-managed:
 
 ```env
-AMA_EMBEDDING_PROVIDER=openai
-AMA_ANSWER_PROVIDER=openai
 AMA_ANSWER_MODEL=gpt-5.6-terra
 AMA_ANSWER_MAX_OUTPUT_TOKENS=1000
-OPENAI_API_KEY=your-project-api-key
 ```
 
 The question and selected parent context leave the local machine when the OpenAI

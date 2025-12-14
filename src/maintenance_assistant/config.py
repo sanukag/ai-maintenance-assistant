@@ -280,15 +280,6 @@ class Settings:
             "AMA_ANSWER_MAX_OUTPUT_TOKENS",
         )
         openai_api_key = values.get("OPENAI_API_KEY", "").strip() or None
-        if (
-            embedding_provider == "openai"
-            or answer_provider == "openai"
-            or visual_analysis_provider == "openai"
-            or rerank_provider == "openai"
-        ) and openai_api_key is None:
-            raise ValueError(
-                "OPENAI_API_KEY is required when an OpenAI provider is enabled"
-            )
         log_level = values.get("AMA_LOG_LEVEL", "INFO").strip().upper()
         if log_level not in VALID_LOG_LEVELS:
             allowed = ", ".join(sorted(VALID_LOG_LEVELS))

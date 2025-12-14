@@ -92,6 +92,99 @@ def test_metrics_report_templated_routes_cache_and_sqlite_runtime(tmp_path: Path
     )
 
 
+def test_api_keys_can_be_saved_edited_deleted_and_reused_after_restart(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path, ocr_provider="none")
+    first_application = create_app(
+        settings=settings,
+        ocr_provider=None,
+    )
+
+    with TestClient(first_application) as client:
+        missing = client.get("/credentials")
+        saved = client.put(
+            "/credentials/OPENAI_API_KEY",
+            json={"value": "sk-project-first-1234"},
+        )
+        enabled = client.get("/health")
+
+    assert missing.json()["items"][0]["source"] == "missing"
+    assert saved.status_code == 200
+    assert saved.json()["masked_value"] == "••••1234"
+    assert saved.json()["can_delete"] is True
+    assert "sk-project-first-1234" not in saved.text
+    assert enabled.json()["embeddings"] == "enabled"
+    assert enabled.json()["visual_analysis"] == "available"
+    assert enabled.json()["reranking"] == "enabled"
+    assert enabled.json()["answers"] == "enabled"
+
+    restarted_application = create_app(settings=settings, ocr_provider=None)
+    with TestClient(restarted_application) as client:
+        persisted = client.get("/credentials")
+        edited = client.put(
+            "/credentials/OPENAI_API_KEY",
+            json={"value": "sk-project-edited-9876"},
+        )
+        deleted = client.delete("/credentials/OPENAI_API_KEY")
+        disabled = client.get("/health")
+
+    assert persisted.json()["items"][0]["source"] == "saved"
+    assert edited.json()["masked_value"] == "••••9876"
+    assert deleted.json()["source"] == "missing"
+    assert deleted.json()["configured"] is False
+    assert disabled.json()["embeddings"] == "disabled"
+    assert disabled.json()["visual_analysis"] == "disabled"
+    assert disabled.json()["reranking"] == "disabled"
+    assert disabled.json()["answers"] == "disabled"
+
+
+def test_environment_api_key_can_be_overridden_but_not_deleted_from_settings(
+    tmp_path: Path,
+) -> None:
+    application = create_app(
+        settings=_settings(
+            tmp_path,
+            ocr_provider="none",
+            openai_api_key="sk-environment-key-1111",
+        ),
+        ocr_provider=None,
+    )
+
+    with TestClient(application) as client:
+        environment = client.get("/credentials").json()["items"][0]
+        rejected = client.delete("/credentials/OPENAI_API_KEY")
+        client.put(
+            "/credentials/OPENAI_API_KEY",
+            json={"value": "sk-saved-override-2222"},
+        )
+        fallback = client.delete("/credentials/OPENAI_API_KEY")
+
+    assert environment["source"] == "environment"
+    assert environment["masked_value"] == "••••1111"
+    assert environment["can_delete"] is False
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "credential_environment_managed"
+    assert fallback.json()["source"] == "environment"
+    assert fallback.json()["masked_value"] == "••••1111"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"value": "short"}, {"value": "has whitespace"}, {"value": "x" * 2_049}],
+)
+def test_api_key_endpoint_rejects_invalid_secrets(
+    tmp_path: Path,
+    payload: dict[str, str],
+) -> None:
+    application = create_app(settings=_settings(tmp_path), ocr_provider=None)
+
+    with TestClient(application) as client:
+        response = client.put("/credentials/OPENAI_API_KEY", json=payload)
+
+    assert response.status_code == 422
+
+
 def test_upload_scanned_image_reports_local_ocr_metadata(tmp_path: Path) -> None:
     image = tmp_path / "scan.png"
     write_scanned_image(image, "CHECK MOTOR ROTATION")
@@ -498,6 +591,8 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
 
     assert schema["info"]["title"] == "AI Maintenance Assistant API"
     assert set(schema["paths"]) == {
+        "/credentials",
+        "/credentials/{credential_name}",
         "/metrics",
         "/health",
         "/ingestion-jobs",

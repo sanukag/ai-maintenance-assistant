@@ -38,7 +38,9 @@ Open `http://127.0.0.1:3000`. The Next.js server connects to the local API at
 
 Copy `.env.example` to `.env` when you need to override the local defaults.
 Configuration is read from environment variables; `.env` files are not loaded
-automatically by the package and must be loaded by the chosen runtime.
+automatically by the package and must be loaded by the chosen runtime. External
+API keys are managed separately from the Settings page and persist in encrypted
+local storage. `OPENAI_API_KEY` remains available as an environment fallback.
 
 ## Project layout
 
@@ -75,15 +77,14 @@ Password-protected PDFs remain unsupported.
 
 ### Enable image and diagram understanding
 
-Visual analysis is disabled by default because rendered document pages are
-sent to the configured provider. Enable it with embeddings so descriptions of
+Visual analysis is disabled until an OpenAI API key is available because
+rendered document pages are sent to OpenAI. Add a key from **Settings → API
+keys** (preferred) or provide the `OPENAI_API_KEY` environment fallback. This
+also enables embeddings so descriptions of
 equipment photographs, schematics, wiring and flow diagrams, drawings, charts
 and tables become searchable evidence:
 
 ```bash
-export AMA_VISUAL_ANALYSIS_PROVIDER=openai
-export AMA_EMBEDDING_PROVIDER=openai
-export OPENAI_API_KEY=your-project-api-key
 ama-ingest /path/to/maintenance-manual.pdf
 ```
 
@@ -103,12 +104,10 @@ and the same classifications can restrict questions to matching current manuals.
 
 ### Enable embeddings and hybrid search
 
-Embeddings are disabled by default. To embed new or previously ingested
-documents with OpenAI:
+Embeddings are disabled until an OpenAI API key is available. Add one from the
+Settings page before embedding new or previously ingested documents:
 
 ```bash
-export AMA_EMBEDDING_PROVIDER=openai
-export OPENAI_API_KEY=your-project-api-key
 ama-ingest /path/to/maintenance-manual.pdf
 ```
 
@@ -152,13 +151,11 @@ to create the stored vectors.
 ### Enable grounded answers
 
 Grounded answers rank small child chunks, expand them to section-aligned parent
-context and send only the question and selected context to the configured answer provider. Enable
-both OpenAI-backed stages before starting the API:
+context and send only the question and selected context to OpenAI. Add the API
+key in Settings; all fixed OpenAI-backed stages become available immediately,
+without restarting the API:
 
 ```bash
-export AMA_EMBEDDING_PROVIDER=openai
-export AMA_ANSWER_PROVIDER=openai
-export OPENAI_API_KEY=your-project-api-key
 ama-api
 ```
 
@@ -201,9 +198,9 @@ curl -F "file=@/path/to/maintenance-manual.pdf" \
   http://127.0.0.1:8000/documents
 ```
 
-Document upload, metadata browsing and health checks work with the default
-local-only provider configuration. Semantic search requires embeddings;
-grounded answers require both embedding and answer providers. The initial API
+Document upload, metadata browsing and health checks work without an external
+key. Semantic search and grounded answers become available when the OpenAI key
+is configured. The initial API
 has no authentication and is intended for local development only; do not expose
 it to an untrusted network.
 
@@ -224,7 +221,8 @@ available at `http://127.0.0.1:8000`, including its interactive documentation at
 cache avoids recreating identical embeddings. Compose keeps documents, SQLite metadata, vectors and conversation
 history in a named volume when the containers are recreated.
 
-Use a local `.env` file to change `AMA_API_PORT` or enable embeddings. Stop the
+Use a local `.env` file to change `AMA_API_PORT`; manage the OpenAI key from
+Settings. Stop the
 service without deleting its stored data with:
 
 ```bash
@@ -232,7 +230,7 @@ docker compose down
 ```
 
 See [`docs/containerisation.md`](docs/containerisation.md) before deleting the
-volume or enabling an external embedding provider.
+volume, which also contains the credential-encryption key.
 
 See [`docs/indexed-vector-storage.md`](docs/indexed-vector-storage.md) for index
 synchronisation, filtering, recovery and fallback behaviour.
@@ -248,6 +246,8 @@ validation and current limitations are described in
 [`docs/grounded-answers.md`](docs/grounded-answers.md). See
 [`docs/conversation-history.md`](docs/conversation-history.md) for durable local
 message history. See
+[`docs/app-managed-credentials.md`](docs/app-managed-credentials.md) for API-key
+storage, precedence, recovery and security boundaries. See
 [`docs/web-interface.md`](docs/web-interface.md) for the worker experience and
 frontend architecture, and [`docs/manual-lifecycle.md`](docs/manual-lifecycle.md)
 for revision, archive and deletion guarantees. Local concurrency, embedding

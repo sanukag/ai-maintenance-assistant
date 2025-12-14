@@ -6,7 +6,7 @@ The ingestion pipeline turns a local PDF, scanned `PNG`/`JPEG` image,
 plain-text or Markdown file into locally stored, source-aware chunks.
 
 Validation, parsing, chunking and storage run locally. Embedding is optional and
-calls the explicitly configured provider.
+uses the fixed OpenAI service when an API key is available.
 
 ## Pipeline
 
@@ -88,7 +88,6 @@ source copies are removed.
 | `AMA_OCR_PAGE_TIMEOUT_SECONDS` | `30` | Maximum recognition time per image/page |
 | `AMA_OCR_MAX_PAGES` | `100` | Maximum textless PDF pages recognised per request |
 | `AMA_OCR_MAX_IMAGE_PIXELS` | `50000000` | Maximum rendered or uploaded image pixels |
-| `AMA_VISUAL_ANALYSIS_PROVIDER` | `none` | `none` or opt-in `openai` page analysis |
 | `AMA_VISUAL_ANALYSIS_MODEL` | `gpt-5.6-terra` | Image-capable Responses API model |
 | `AMA_VISUAL_ANALYSIS_DETAIL` | `high` | Provider image fidelity: `low`, `high`, `original` or `auto` |
 | `AMA_VISUAL_ANALYSIS_RENDER_DPI` | `150` | PDF resolution sent for visual analysis |
@@ -100,11 +99,10 @@ source copies are removed.
 | `AMA_CHUNK_OVERLAP_TOKENS` | `40` | Maximum repeated model tokens between chunks |
 | `AMA_PARENT_CHUNK_SIZE_TOKENS` | `900` | Maximum model tokens in answer context |
 | `AMA_CHUNK_TOKEN_ENCODING` | `cl100k_base` | Token encoding used for chunk boundaries |
-| `AMA_EMBEDDING_PROVIDER` | `none` | `none` or the opt-in `openai` provider |
 | `AMA_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model identifier |
 | `AMA_EMBEDDING_DIMENSIONS` | `512` | Stored vector dimensions |
 | `AMA_EMBEDDING_BATCH_SIZE` | `128` | Maximum texts per embedding request |
-| `OPENAI_API_KEY` | none | Required when the OpenAI provider is enabled |
+| `OPENAI_API_KEY` | none | Optional environment fallback for the app-managed OpenAI key |
 
 Token boundaries use OpenAI's `cl100k_base` encoding, which matches the current
 embedding-model family. The verified encoding table is packaged with the
@@ -117,7 +115,10 @@ stored chunks remain readable; their token count is reported as unknown until
 the document is re-indexed with the new chunker. Re-indexing reparses the stored
 source and replaces its hierarchy and vectors in one database transaction.
 
-The API key is read from the environment and is never stored in the database.
+The preferred OpenAI key is added from Settings and stored as encrypted database
+ciphertext. Its encryption key is an owner-readable file beneath the data
+directory. A saved value overrides the optional `OPENAI_API_KEY` environment
+fallback. See [App-managed API keys](app-managed-credentials.md).
 
 ## Outcomes and errors
 

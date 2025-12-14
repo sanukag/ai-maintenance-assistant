@@ -45,6 +45,10 @@ The project tests ingestion at three levels:
 - Performance tests verify WAL and busy-timeout configuration, schema migration,
   bounded cache eviction, hit accounting, input-order preservation and safe
   aggregate metrics.
+- Credential tests verify Fernet ciphertext storage, owner-only key-file
+  permissions, save/edit/delete behaviour, environment precedence, fail-closed
+  decryption, redacted API responses, live service reload and restart
+  persistence.
 
 Run the complete suite with:
 
@@ -95,9 +99,9 @@ AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
 It builds both images, waits for the API and web health checks, confirms both
 processes use the non-root UID, verifies the internal API proxy, recognises a
 real image-only PDF with containerised Tesseract, installs a replacement
-revision, restarts the API, checks volume persistence and exercises archive and
-deletion through the web proxy. The isolated test Compose project, images and
-volume are removed in cleanup.
+revision, saves an encrypted API key, restarts the API, checks credential and
+volume persistence and exercises archive and deletion through the web proxy.
+The isolated test Compose project, images and volume are removed in cleanup.
 
 ## Continuous integration
 

@@ -15,6 +15,10 @@ from typing import Callable
 from uuid import uuid4
 
 from maintenance_assistant.config import Settings
+from maintenance_assistant.credentials import (
+    CredentialStore,
+    settings_with_credentials,
+)
 from maintenance_assistant.embeddings import create_embedding_provider
 from maintenance_assistant.ingestion import DocumentMetadata, IngestionService, LocalDocumentStore
 from maintenance_assistant.ingestion.errors import IngestionError
@@ -225,9 +229,15 @@ class IngestionJobStore:
 class IngestionWorker:
     """Process one persistent job at a time with cooperative cancellation."""
 
-    def __init__(self, jobs: IngestionJobStore, ingestion: IngestionService) -> None:
+    def __init__(
+        self,
+        jobs: IngestionJobStore,
+        ingestion: IngestionService,
+        ingestion_refresh: Callable[[], IngestionService] | None = None,
+    ) -> None:
         self.jobs = jobs
         self.ingestion = ingestion
+        self.ingestion_refresh = ingestion_refresh
 
     def run_once(self) -> bool:
         job = self.jobs.claim_next()
@@ -240,7 +250,12 @@ class IngestionWorker:
             self.jobs.update_progress(job.id, stage, progress)
 
         try:
-            result = self.ingestion.ingest(job.staged_path, job.metadata, progress=report)
+            ingestion = (
+                self.ingestion_refresh()
+                if self.ingestion_refresh is not None
+                else self.ingestion
+            )
+            result = ingestion.ingest(job.staged_path, job.metadata, progress=report)
         except JobCancelled:
             self.jobs.mark_cancelled(job.id)
         except Exception as error:
@@ -254,21 +269,29 @@ def run_worker(settings: Settings, poll_seconds: float = 1.0, once: bool = False
     store = LocalDocumentStore(settings.data_directory, settings.sqlite_busy_timeout_ms)
     jobs = IngestionJobStore(store)
     vector_index = create_vector_index(settings, store)
-    ingestion = IngestionService(
-        settings,
-        store=store,
-        embedding_provider=create_embedding_provider(settings, store),
-        ocr_provider=create_ocr_provider(settings),
-        visual_analysis_provider=create_visual_analysis_provider(settings),
-        vector_index=vector_index,
-    )
+    credentials = CredentialStore(store)
+
+    def build_ingestion() -> IngestionService:
+        runtime_settings = settings_with_credentials(settings, credentials)
+        return IngestionService(
+            runtime_settings,
+            store=store,
+            embedding_provider=create_embedding_provider(runtime_settings, store),
+            ocr_provider=create_ocr_provider(runtime_settings),
+            visual_analysis_provider=create_visual_analysis_provider(
+                runtime_settings
+            ),
+            vector_index=vector_index,
+        )
+
+    ingestion = build_ingestion()
     if vector_index is not None:
         try:
             vector_index.rebuild()
         except Exception:
             logger.exception("Qdrant bootstrap failed; SQLite fallback remains active")
     jobs.recover_interrupted()
-    worker = IngestionWorker(jobs, ingestion)
+    worker = IngestionWorker(jobs, ingestion, build_ingestion)
     while True:
         worked = worker.run_once()
         if once:

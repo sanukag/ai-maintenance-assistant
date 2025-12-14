@@ -34,6 +34,20 @@ export type RuntimeMetrics = {
   sqlite: { journal_mode: string; synchronous: number; busy_timeout_ms: number };
 };
 
+export type CredentialStatus = {
+  name: "OPENAI_API_KEY";
+  label: string;
+  description: string;
+  used_by: string[];
+  configured: boolean;
+  source: "saved" | "environment" | "missing";
+  masked_value: string | null;
+  updated_at: string | null;
+  can_delete: boolean;
+};
+
+export type CredentialList = { items: CredentialStatus[] };
+
 export type DocumentMetadata = {
   brand: string[];
   machine: string[];

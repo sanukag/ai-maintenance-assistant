@@ -49,9 +49,10 @@ def test_compose_configuration_is_valid() -> None:
     assert api["cap_drop"] == ["ALL"]
     assert "no-new-privileges:true" in api["security_opt"]
     assert api["environment"]["AMA_DATA_DIRECTORY"] == "/app/data"
-    assert api["environment"]["AMA_ANSWER_PROVIDER"] in {"none", "openai"}
     assert api["environment"]["AMA_OCR_PROVIDER"] in {"none", "tesseract"}
-    assert api["environment"]["AMA_VISUAL_ANALYSIS_PROVIDER"] in {"none", "openai"}
+    assert "AMA_ANSWER_PROVIDER" not in api["environment"]
+    assert "AMA_VISUAL_ANALYSIS_PROVIDER" not in api["environment"]
+    assert "AMA_EMBEDDING_PROVIDER" not in api["environment"]
     assert api["environment"]["AMA_VECTOR_STORE"] in {"sqlite", "qdrant"}
     assert api["environment"]["AMA_QDRANT_URL"] == "http://qdrant:6333"
     assert int(api["environment"]["AMA_OCR_DPI"]) >= 150
@@ -115,9 +116,6 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
         "AMA_API_PORT": str(port),
         "AMA_WEB_PORT": str(web_port),
         "AMA_QDRANT_PORT": str(qdrant_port),
-        "AMA_EMBEDDING_PROVIDER": "none",
-        "AMA_ANSWER_PROVIDER": "none",
-        "AMA_VISUAL_ANALYSIS_PROVIDER": "none",
     }
     environment.pop("OPENAI_API_KEY", None)
     compose = ("--project-name", project)
@@ -278,6 +276,38 @@ def test_container_runs_as_non_root_and_preserves_documents(tmp_path: Path) -> N
             f"{base_url}/documents?lifecycle_status=current"
         )
         assert [item["id"] for item in current["items"]] == [scanned_document_id]
+
+        saved_credential = _json_api_request(
+            f"{base_url}/credentials/OPENAI_API_KEY",
+            method="PUT",
+            body={"value": "sk-container-persisted-1234"},
+        )
+        assert saved_credential["masked_value"] == "••••1234"
+        assert _json_request(f"{base_url}/health")["answers"] == "enabled"
+        key_mode = _compose(
+            *compose,
+            "exec",
+            "-T",
+            "api",
+            "stat",
+            "-c",
+            "%a",
+            "/app/data/credential-encryption.key",
+            environment=environment,
+        )
+        assert key_mode.stdout.strip() == "600"
+
+        _compose(*compose, "restart", "api", environment=environment)
+        _wait_until_healthy(base_url)
+        persisted_credential = _json_request(f"{base_url}/credentials")["items"][0]
+        assert persisted_credential["source"] == "saved"
+        assert persisted_credential["masked_value"] == "••••1234"
+        deleted_credential = _json_api_request(
+            f"{web_url}/api/backend/credentials/OPENAI_API_KEY",
+            method="DELETE",
+        )
+        assert deleted_credential["source"] == "missing"
+        assert _json_request(f"{base_url}/health")["answers"] == "disabled"
     finally:
         _compose(
             *compose,
@@ -329,6 +359,21 @@ def _json_request(url: str, request: Request | None = None) -> dict[str, object]
 def _text_request(url: str) -> str:
     with urlopen(url, timeout=5) as response:
         return response.read().decode("utf-8")
+
+
+def _json_api_request(
+    url: str,
+    *,
+    method: str,
+    body: dict[str, str] | None = None,
+) -> dict[str, object]:
+    request = Request(
+        url,
+        data=json.dumps(body).encode("utf-8") if body is not None else None,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    return _json_request(url, request)
 
 
 def _upload_text_document(

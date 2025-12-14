@@ -15,6 +15,9 @@ from maintenance_assistant.api.schemas import (
     ConversationListResponse,
     ConversationResponse,
     ConversationSummaryResponse,
+    CredentialListResponse,
+    CredentialStatusResponse,
+    CredentialUpdateRequest,
     DocumentListResponse,
     DocumentMetadataRequest,
     DocumentResponse,
@@ -37,6 +40,7 @@ from maintenance_assistant.api.schemas import (
     SearchResultResponse,
 )
 from maintenance_assistant.api.services import ApiServices, get_services
+from maintenance_assistant.credentials import CredentialName, CredentialStore
 from maintenance_assistant.ingestion import (
     DocumentLifecycleStatus,
     DocumentMetadata,
@@ -111,6 +115,73 @@ def runtime_metrics(
     }
     snapshot["sqlite"] = services.store.sqlite_runtime()
     return RuntimeMetricsResponse.model_validate(snapshot)
+
+
+def _credential_environment(request: Request) -> dict[CredentialName, str | None]:
+    settings = request.app.state.base_settings
+    return {CredentialName.OPENAI_API_KEY: settings.openai_api_key}
+
+
+@router.get("/credentials", response_model=CredentialListResponse, tags=["system"])
+def list_credentials(request: Request) -> CredentialListResponse:
+    """Return masked credential status without exposing secret values."""
+
+    credentials: CredentialStore = request.app.state.credential_store
+    statuses = credentials.list_statuses(_credential_environment(request))
+    return CredentialListResponse(
+        items=[CredentialStatusResponse.from_status(item) for item in statuses]
+    )
+
+
+@router.put(
+    "/credentials/{credential_name}",
+    response_model=CredentialStatusResponse,
+    tags=["system"],
+)
+def save_credential(
+    credential_name: CredentialName,
+    payload: CredentialUpdateRequest,
+    request: Request,
+) -> CredentialStatusResponse:
+    """Encrypt an API key and reload external services immediately."""
+
+    credentials: CredentialStore = request.app.state.credential_store
+    status = credentials.save(credential_name, payload.value.get_secret_value())
+    request.app.state.reload_services()
+    return CredentialStatusResponse.from_status(status)
+
+
+@router.delete(
+    "/credentials/{credential_name}",
+    response_model=CredentialStatusResponse,
+    tags=["system"],
+)
+def delete_credential(
+    credential_name: CredentialName,
+    request: Request,
+) -> CredentialStatusResponse:
+    """Delete a saved key and fall back to environment configuration if present."""
+
+    credentials: CredentialStore = request.app.state.credential_store
+    current = credentials.status(
+        credential_name,
+        _credential_environment(request).get(credential_name),
+    )
+    if not current.can_delete:
+        if current.source == "environment":
+            raise ApiError(
+                409,
+                "credential_environment_managed",
+                "This API key is supplied by the service environment and cannot be deleted here",
+            )
+        raise ApiError(404, "credential_not_found", "No saved API key was found")
+    credentials.delete(credential_name)
+    request.app.state.reload_services()
+    refreshed = credentials.status(
+        credential_name,
+        _credential_environment(request).get(credential_name),
+    )
+    return CredentialStatusResponse.from_status(refreshed)
 
 
 @router.post(

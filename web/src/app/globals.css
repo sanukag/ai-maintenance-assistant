@@ -597,6 +597,33 @@ a { color: inherit; text-decoration: none; }
 .enterprise-settings-layout .developer-card { margin-top: 0; }
 .enterprise-config-card { padding: 24px; }
 .enterprise-config-card h2 { margin: 0; font-size: 17px; }
+.credential-settings-card { grid-column: 1 / -1; padding: 25px; background: white; border: 1px solid #dce4dd; border-radius: var(--radius-md); }
+.credential-settings-card .eyebrow { margin-bottom: 5px; color: var(--orange-dark); }
+.credential-settings-card h2 { margin: 0; font-size: 19px; }
+.credential-security-note { display: inline-flex; align-items: center; gap: 6px; color: #397253; font-size: 9.5px; font-weight: 750; }
+.credential-security-note svg { width: 15px; }
+.credential-intro { max-width: 780px; margin: 18px 0; color: var(--muted); font-size: 10.5px; line-height: 1.6; }
+.credential-list { display: grid; gap: 12px; }
+.credential-item { padding: 19px; background: #f8faf8; border: 1px solid #e0e6e0; border-radius: 13px; }
+.credential-item-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.credential-item-heading strong { color: #263c35; font-size: 13px; }
+.credential-item-heading p { max-width: 620px; margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.credential-capabilities { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.credential-capabilities span { padding: 5px 8px; color: #49635b; background: #edf3ed; border-radius: 99px; font-size: 8.5px; font-weight: 700; }
+.credential-summary { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 17px; padding-top: 15px; border-top: 1px solid #e0e6e0; }
+.credential-summary small { display: block; margin-bottom: 6px; color: #7c8985; font-size: 9px; }
+.credential-summary code { color: #294e43; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; }
+.credential-actions { display: flex; align-items: center; gap: 8px; }
+.credential-actions .secondary-button, .credential-add-button, .credential-form .primary-button, .credential-form .secondary-button { min-height: 36px; padding: 0 12px; font-size: 9px; }
+.credential-delete-button { padding: 8px 3px; color: #a84636; background: transparent; border: 0; font-size: 9px; font-weight: 800; cursor: pointer; }
+.credential-delete-button:disabled { opacity: .5; cursor: wait; }
+.credential-add-button { margin-top: 17px; }
+.credential-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; margin-top: 17px; padding-top: 15px; border-top: 1px solid #e0e6e0; }
+.credential-form label { grid-column: 1 / -1; color: #40534d; font-size: 9px; font-weight: 800; }
+.credential-form input { min-width: 0; height: 42px; padding: 0 12px; color: #263c35; background: white; border: 1px solid #ced9d1; border-radius: 9px; outline: 0; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; }
+.credential-form input:focus { border-color: #789b83; box-shadow: 0 0 0 3px rgba(69,112,80,.1); }
+.credential-form > p { grid-column: 1; margin: 0; color: #89948f; font-size: 8.5px; }
+.credential-form > div { grid-column: 2; display: flex; justify-content: flex-end; gap: 8px; }
 
 .mobile-menu-button { position: fixed; z-index: 20; top: 17px; left: 17px; width: 43px; height: 43px; place-items: center; color: white; background: var(--forest); border: 0; border-radius: 12px; box-shadow: 0 8px 20px rgba(18,60,54,.2); }
 .nav-scrim { position: fixed; z-index: 25; inset: 0; background: rgba(8,25,22,.52); border: 0; backdrop-filter: blur(3px); }
@@ -686,6 +713,11 @@ a { color: inherit; text-decoration: none; }
   .status-table-row > span { grid-column: 1 / -1; grid-row: 2; }
   .status-table-row > b { grid-column: 2; grid-row: 1; }
   .runtime-list > div { grid-template-columns: 1fr; gap: 6px; padding: 13px 4px; }
+  .credential-item-heading, .credential-summary { align-items: flex-start; flex-direction: column; }
+  .credential-form { grid-template-columns: 1fr; }
+  .credential-form > p, .credential-form > div { grid-column: 1; }
+  .credential-form > div { justify-content: stretch; }
+  .credential-form > div button { flex: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

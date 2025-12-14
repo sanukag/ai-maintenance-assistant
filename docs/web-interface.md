@@ -19,9 +19,9 @@ The interface has three focused areas:
   and Markdown. Upload and revision forms use searchable create-or-select
   controls. Workers can reuse saved values, type a new value and press Enter,
   or attach several brands, machines, sites and document types to one manual.
-- **Settings** uses a compact operational status table for provider and service
-  readiness, followed by non-sensitive request, embedding-cache and SQLite
-  measurements, configuration and developer runtime information.
+- **Settings** manages the API keys required by fixed external services, uses a
+  compact operational status table for service readiness, and shows
+  non-sensitive request, embedding-cache, SQLite and developer information.
 
 The navigation becomes a drawer on narrow screens. Tables and answer sources
 collapse progressively so important actions remain usable on a workshop tablet
@@ -85,6 +85,6 @@ when the API uses a different local address.
 ## Current boundary
 
 The interface is local and unauthenticated. It does not yet provide user roles
-or streaming answers.
-Settings deliberately reports configuration but does not edit provider values
-or accept API keys in the browser.
+or streaming answers. Settings accepts supported API keys, but does not expose
+provider or model selection. Complete secrets are never returned to the browser;
+saved values are shown only as masks and edits use an empty password field.

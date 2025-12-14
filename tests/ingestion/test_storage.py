@@ -340,13 +340,18 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
             "SELECT name FROM sqlite_master "
             "WHERE type = 'table' AND name = 'ingestion_jobs'"
         ).fetchone()
+        credentials_table = connection.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'external_credentials'"
+        ).fetchone()
     finally:
         connection.close()
-    assert version == 12
+    assert version == 13
     assert embedding_table == ("embeddings",)
     assert conversation_table == ("conversations",)
     assert feedback_table == ("conversation_message_feedback",)
     assert jobs_table == ("ingestion_jobs",)
+    assert credentials_table == ("external_credentials",)
     store = LocalDocumentStore(data_directory)
     migrated = store.get_document("existing-document")
     assert migrated.title == "Existing manual"
@@ -615,7 +620,7 @@ def test_store_initialises_once_when_called_concurrently(tmp_path: Path) -> None
         list(executor.map(lambda _: store.initialise(), range(24)))
 
     with closing(sqlite3.connect(store.database_path)) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 13
     assert store._initialised is True
 
 
