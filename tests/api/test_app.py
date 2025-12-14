@@ -61,6 +61,37 @@ def test_health_reports_local_services(tmp_path: Path) -> None:
     assert (tmp_path / "data" / "maintenance-assistant.db").is_file()
 
 
+def test_metrics_report_templated_routes_cache_and_sqlite_runtime(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path, ocr_provider="none"),
+        embedding_provider=None,
+        ocr_provider=None,
+    )
+
+    with TestClient(application) as client:
+        client.get("/health")
+        client.get("/documents/missing")
+        response = client.get("/metrics")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requests_total"] == 2
+    assert body["embedding_cache"] == {
+        "entries": 0,
+        "hits": 0,
+        "maximum_entries": 10_000,
+    }
+    assert body["sqlite"] == {
+        "journal_mode": "wal",
+        "synchronous": 1,
+        "busy_timeout_ms": 5_000,
+    }
+    assert any(
+        row["method"] == "GET" and row["route"] == "/documents/{document_id}"
+        for row in body["routes"]
+    )
+
+
 def test_upload_scanned_image_reports_local_ocr_metadata(tmp_path: Path) -> None:
     image = tmp_path / "scan.png"
     write_scanned_image(image, "CHECK MOTOR ROTATION")
@@ -467,6 +498,7 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
 
     assert schema["info"]["title"] == "AI Maintenance Assistant API"
     assert set(schema["paths"]) == {
+        "/metrics",
         "/health",
         "/ingestion-jobs",
         "/ingestion-jobs/{job_id}",

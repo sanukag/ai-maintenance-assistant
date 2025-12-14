@@ -25,6 +25,7 @@ their health checks report success. The worker interface is available at:
 The API and developer documentation remain available at:
 
 - `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/metrics`
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
 - `http://127.0.0.1:6333/dashboard` for local Qdrant diagnostics
@@ -62,6 +63,9 @@ the internal `http://api:8000` service address.
 `AMA_QDRANT_PORT` controls the loopback-only diagnostic port and defaults to
 `6333`. Application containers use the internal `http://qdrant:6333` address.
 Set `AMA_VECTOR_STORE=sqlite` to bypass Qdrant without removing its stored data.
+`AMA_SQLITE_BUSY_TIMEOUT_MS` bounds API/worker lock waits, and
+`AMA_EMBEDDING_CACHE_MAX_ENTRIES` bounds persistent vector reuse. Both services
+receive the same values through Compose.
 
 Embeddings and grounded answers remain disabled by default. To enable both
 OpenAI providers, set these values only in the untracked `.env` file:

@@ -106,7 +106,9 @@ a stable local refusal with no citations.
 - `maintenance_assistant.ingestion.storage` owns the local SQLite database and
   controlled source-file copies, vectors and schema migrations.
 - `maintenance_assistant.embeddings` owns the provider contract and real OpenAI
-  Embeddings API implementation.
+  Embeddings API implementation, plus the persistent cache wrapper.
+- `maintenance_assistant.metrics` owns bounded in-process API timing aggregates
+  without retaining request content.
 - `maintenance_assistant.ocr` owns the local OCR contract and bounded Tesseract
   process integration.
 - `maintenance_assistant.vision` owns typed visual-analysis results, image

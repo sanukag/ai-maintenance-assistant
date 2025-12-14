@@ -46,9 +46,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         settings = Settings.from_environment()
-        provider = create_embedding_provider(settings)
+        store = LocalDocumentStore(
+            settings.data_directory, settings.sqlite_busy_timeout_ms
+        )
+        provider = create_embedding_provider(settings, store)
         result = IngestionService(
             settings,
+            store=store,
             embedding_provider=provider,
         ).ingest(arguments.document)
     except (IngestionError, ValueError) as error:
@@ -100,12 +104,15 @@ def search_main(argv: Sequence[str] | None = None) -> int:
 
     try:
         settings = Settings.from_environment()
-        provider = create_embedding_provider(settings)
+        store = LocalDocumentStore(
+            settings.data_directory, settings.sqlite_busy_timeout_ms
+        )
+        provider = create_embedding_provider(settings, store)
         if provider is None:
             raise ValueError(
                 "hybrid search requires AMA_EMBEDDING_PROVIDER=openai"
             )
-        results = _search_service(settings, provider).search(
+        results = _search_service(settings, provider, store).search(
             arguments.query,
             limit=arguments.limit,
             document_id=arguments.document_id,
@@ -174,14 +181,17 @@ def evaluation_main(argv: Sequence[str] | None = None) -> int:
         _validate_rate(arguments.fail_hit_rate_below, "--fail-hit-rate-below")
         _validate_rate(arguments.fail_mrr_below, "--fail-mrr-below")
         settings = Settings.from_environment()
-        provider = create_embedding_provider(settings)
+        store = LocalDocumentStore(
+            settings.data_directory, settings.sqlite_busy_timeout_ms
+        )
+        provider = create_embedding_provider(settings, store)
         if provider is None:
             raise ValueError(
                 "retrieval evaluation requires AMA_EMBEDDING_PROVIDER=openai"
             )
         dataset = load_retrieval_dataset(arguments.dataset)
         report = RetrievalEvaluator(
-            _search_service(settings, provider)
+            _search_service(settings, provider, store)
         ).evaluate(
             dataset,
             limit=arguments.limit,
@@ -230,9 +240,13 @@ def _validate_rate(value: float | None, option: str) -> None:
 def _search_service(
     settings: Settings,
     provider: EmbeddingProvider,
+    store: LocalDocumentStore | None = None,
 ) -> HybridSearchService:
     return HybridSearchService(
-        LocalDocumentStore(settings.data_directory),
+        store
+        or LocalDocumentStore(
+            settings.data_directory, settings.sqlite_busy_timeout_ms
+        ),
         provider,
         candidate_limit=settings.retrieval_candidate_limit,
         rrf_k=settings.retrieval_rrf_k,

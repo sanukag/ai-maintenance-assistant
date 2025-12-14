@@ -220,7 +220,8 @@ background worker processes persisted imports independently of the browser and
 API request, while Qdrant provides indexed semantic candidate search with a
 SQLite fallback. The API remains
 available at `http://127.0.0.1:8000`, including its interactive documentation at
-`/docs`. Compose keeps documents, SQLite metadata, vectors and conversation
+`/docs`. SQLite uses WAL for API/worker concurrency, while a persistent bounded
+cache avoids recreating identical embeddings. Compose keeps documents, SQLite metadata, vectors and conversation
 history in a named volume when the containers are recreated.
 
 Use a local `.env` file to change `AMA_API_PORT` or enable embeddings. Stop the
@@ -249,4 +250,6 @@ validation and current limitations are described in
 message history. See
 [`docs/web-interface.md`](docs/web-interface.md) for the worker experience and
 frontend architecture, and [`docs/manual-lifecycle.md`](docs/manual-lifecycle.md)
-for revision, archive and deletion guarantees.
+for revision, archive and deletion guarantees. Local concurrency, embedding
+reuse and runtime measurements are covered in
+[`docs/performance-and-caching.md`](docs/performance-and-caching.md).

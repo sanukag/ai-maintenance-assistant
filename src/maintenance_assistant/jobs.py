@@ -251,13 +251,13 @@ class IngestionWorker:
 
 
 def run_worker(settings: Settings, poll_seconds: float = 1.0, once: bool = False) -> None:
-    store = LocalDocumentStore(settings.data_directory)
+    store = LocalDocumentStore(settings.data_directory, settings.sqlite_busy_timeout_ms)
     jobs = IngestionJobStore(store)
     vector_index = create_vector_index(settings, store)
     ingestion = IngestionService(
         settings,
         store=store,
-        embedding_provider=create_embedding_provider(settings),
+        embedding_provider=create_embedding_provider(settings, store),
         ocr_provider=create_ocr_provider(settings),
         visual_analysis_provider=create_visual_analysis_provider(settings),
         vector_index=vector_index,

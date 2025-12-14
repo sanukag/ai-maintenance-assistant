@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
-import { type Health, readJson } from "@/lib/api";
+import { type Health, type RuntimeMetrics, readJson } from "@/lib/api";
 
 type StatusRow = { label: string; value: string; detail: string; available: boolean };
 
 export function SettingsPanel() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,8 +16,12 @@ export function SettingsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/backend/health", { cache: "no-store" });
-      setHealth(await readJson<Health>(response));
+      const [healthResponse, metricsResponse] = await Promise.all([
+        fetch("/api/backend/health", { cache: "no-store" }),
+        fetch("/api/backend/metrics", { cache: "no-store" }),
+      ]);
+      setHealth(await readJson<Health>(healthResponse));
+      setMetrics(await readJson<RuntimeMetrics>(metricsResponse));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Service status could not be loaded.");
     } finally {
@@ -26,9 +31,11 @@ export function SettingsPanel() {
 
   useEffect(() => {
     let active = true;
-    fetch("/api/backend/health", { cache: "no-store" })
-      .then(readJson<Health>)
-      .then((result) => { if (active) setHealth(result); })
+    Promise.all([
+      fetch("/api/backend/health", { cache: "no-store" }).then(readJson<Health>),
+      fetch("/api/backend/metrics", { cache: "no-store" }).then(readJson<RuntimeMetrics>),
+    ])
+      .then(([healthResult, metricsResult]) => { if (active) { setHealth(healthResult); setMetrics(metricsResult); } })
       .catch((requestError: Error) => { if (active) setError(requestError.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -66,6 +73,17 @@ export function SettingsPanel() {
         </section>
 
         <section className="developer-card">
+          <div className="developer-heading"><span><Icon name="database" /></span><div><p className="eyebrow">Performance</p><h2>Local runtime</h2></div></div>
+          <dl className="runtime-list">
+            <div><dt>API requests</dt><dd>{metrics?.requests_total ?? "—"}</dd></div>
+            <div><dt>Server errors</dt><dd>{metrics?.errors_total ?? "—"}</dd></div>
+            <div><dt>Embedding cache</dt><dd>{metrics ? `${metrics.embedding_cache.entries.toLocaleString()} entries · ${metrics.embedding_cache.hits.toLocaleString()} hits` : "—"}</dd></div>
+            <div><dt>SQLite journal</dt><dd><code>{metrics?.sqlite.journal_mode.toUpperCase() ?? "—"}</code></dd></div>
+            <div><dt>Busy timeout</dt><dd>{metrics ? `${metrics.sqlite.busy_timeout_ms.toLocaleString()} ms` : "—"}</dd></div>
+          </dl>
+        </section>
+
+        <section className="developer-card">
           <div className="developer-heading"><span><Icon name="server" /></span><div><p className="eyebrow">Developer information</p><h2>Runtime reference</h2></div></div>
           <dl className="runtime-list">
             <div><dt>Web application</dt><dd>Next.js 16 · App Router</dd></div>
@@ -79,7 +97,7 @@ export function SettingsPanel() {
 
         <section className="config-card enterprise-config-card">
           <p className="eyebrow">Configuration</p><h2>Environment variables</h2><p>Provider settings are managed in the service environment. Restart the service after changing them.</p>
-          <div className="code-block"><code>AMA_OCR_PROVIDER</code><code>AMA_VISUAL_ANALYSIS_PROVIDER</code><code>AMA_EMBEDDING_PROVIDER</code><code>AMA_VECTOR_STORE</code><code>AMA_RERANK_PROVIDER</code><code>AMA_ANSWER_PROVIDER</code><code>OPENAI_API_KEY</code></div>
+          <div className="code-block"><code>AMA_OCR_PROVIDER</code><code>AMA_VISUAL_ANALYSIS_PROVIDER</code><code>AMA_EMBEDDING_PROVIDER</code><code>AMA_EMBEDDING_CACHE_MAX_ENTRIES</code><code>AMA_SQLITE_BUSY_TIMEOUT_MS</code><code>AMA_VECTOR_STORE</code><code>AMA_RERANK_PROVIDER</code><code>AMA_ANSWER_PROVIDER</code><code>OPENAI_API_KEY</code></div>
         </section>
       </div>
     </div>

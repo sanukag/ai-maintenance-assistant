@@ -26,6 +26,7 @@ from maintenance_assistant.ingestion import (
     LocalDocumentStore,
 )
 from maintenance_assistant.ocr import OCRProvider, create_ocr_provider
+from maintenance_assistant.metrics import RuntimeMetrics
 from maintenance_assistant.vision import (
     VisualAnalysisProvider,
     create_visual_analysis_provider,
@@ -51,8 +52,12 @@ def create_app(
     """Create an API with production defaults or explicitly injected services."""
 
     configured_settings = settings or Settings.from_environment()
+    configured_store = store or LocalDocumentStore(
+        configured_settings.data_directory,
+        configured_settings.sqlite_busy_timeout_ms,
+    )
     configured_embedding_provider = (
-        create_embedding_provider(configured_settings)
+        create_embedding_provider(configured_settings, configured_store)
         if embedding_provider is _CONFIGURED_EMBEDDING_PROVIDER
         else cast(EmbeddingProvider | None, embedding_provider)
     )
@@ -79,15 +84,35 @@ def create_app(
             "generate grounded answers with verified citations."
         ),
     )
+    application.state.runtime_metrics = RuntimeMetrics()
     application.state.services = build_services(
         settings=configured_settings,
         embedding_provider=configured_embedding_provider,
         answer_provider=configured_answer_provider,
-        store=store,
+        store=configured_store,
         ocr_provider=configured_ocr_provider,
         visual_analysis_provider=configured_visual_analysis_provider,
     )
     application.include_router(router)
+
+    @application.middleware("http")
+    async def measure_requests(request: Request, call_next):
+        metrics: RuntimeMetrics = request.app.state.runtime_metrics
+        started = metrics.start_request()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        finally:
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", request.url.path)
+            metrics.finish_request(
+                request.method,
+                route_path,
+                status_code,
+                started,
+            )
 
     @application.exception_handler(ApiError)
     async def handle_api_error(_: Request, error: ApiError) -> JSONResponse:

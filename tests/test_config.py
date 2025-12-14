@@ -33,6 +33,8 @@ def test_settings_use_local_defaults() -> None:
     assert settings.embedding_model == "text-embedding-3-small"
     assert settings.embedding_dimensions == 512
     assert settings.embedding_batch_size == 128
+    assert settings.embedding_cache_max_entries == 10_000
+    assert settings.sqlite_busy_timeout_ms == 5_000
     assert settings.vector_store == "sqlite"
     assert settings.qdrant_url == "http://127.0.0.1:6333"
     assert settings.qdrant_timeout_seconds == 5
@@ -80,6 +82,8 @@ def test_settings_read_environment_values() -> None:
             "AMA_EMBEDDING_MODEL": "text-embedding-3-large",
             "AMA_EMBEDDING_DIMENSIONS": "1024",
             "AMA_EMBEDDING_BATCH_SIZE": "64",
+            "AMA_EMBEDDING_CACHE_MAX_ENTRIES": "2500",
+            "AMA_SQLITE_BUSY_TIMEOUT_MS": "12000",
             "AMA_VECTOR_STORE": "qdrant",
             "AMA_QDRANT_URL": "http://qdrant:6333/",
             "AMA_QDRANT_TIMEOUT_SECONDS": "12",
@@ -125,6 +129,8 @@ def test_settings_read_environment_values() -> None:
     assert settings.embedding_model == "text-embedding-3-large"
     assert settings.embedding_dimensions == 1024
     assert settings.embedding_batch_size == 64
+    assert settings.embedding_cache_max_entries == 2_500
+    assert settings.sqlite_busy_timeout_ms == 12_000
     assert settings.vector_store == "qdrant"
     assert settings.qdrant_url == "http://qdrant:6333"
     assert settings.qdrant_timeout_seconds == 12
@@ -242,6 +248,9 @@ def test_settings_reject_invalid_visual_analysis_configuration(
         {"AMA_EMBEDDING_DIMENSIONS": "0"},
         {"AMA_EMBEDDING_BATCH_SIZE": "2049"},
         {"AMA_EMBEDDING_MODEL": " "},
+        {"AMA_EMBEDDING_CACHE_MAX_ENTRIES": "-1"},
+        {"AMA_SQLITE_BUSY_TIMEOUT_MS": "0"},
+        {"AMA_SQLITE_BUSY_TIMEOUT_MS": "60001"},
     ],
 )
 def test_settings_reject_invalid_embedding_configuration(

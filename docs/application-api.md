@@ -37,6 +37,7 @@ from OCR and requires `OPENAI_API_KEY`.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/health` | Check storage, OCR, visual analysis and provider availability |
+| `GET` | `/metrics` | Inspect non-sensitive route, cache and SQLite performance aggregates |
 | `POST` | `/documents` | Upload and ingest one PDF, image, text or Markdown document |
 | `GET` | `/documents` | List metadata with pagination and lifecycle filtering |
 | `GET` | `/metadata/options` | List reusable equipment classifications for tagging controls |
