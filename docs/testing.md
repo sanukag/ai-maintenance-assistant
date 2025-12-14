@@ -42,6 +42,9 @@ The project tests ingestion at three levels:
   and text-only modes, document filtering and lifecycle exclusion.
 - Reranking tests verify typed provider requests, exact candidate-ID validation,
   minimum-score filtering, diagnostic scores and fused-order fallback.
+- Performance tests verify WAL and busy-timeout configuration, schema migration,
+  bounded cache eviction, hit accounting, input-order preservation and safe
+  aggregate metrics.
 
 Run the complete suite with:
 

@@ -20,7 +20,8 @@ The interface has three focused areas:
   controls. Workers can reuse saved values, type a new value and press Enter,
   or attach several brands, machines, sites and document types to one manual.
 - **Settings** uses a compact operational status table for provider and service
-  readiness, followed by configuration and developer runtime information.
+  readiness, followed by non-sensitive request, embedding-cache and SQLite
+  measurements, configuration and developer runtime information.
 
 The navigation becomes a drawer on narrow screens. Tables and answer sources
 collapse progressively so important actions remain usable on a workshop tablet
