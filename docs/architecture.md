@@ -101,6 +101,9 @@ a stable local refusal with no citations.
 ## Package boundaries
 
 - `maintenance_assistant.config` owns runtime settings and validation.
+- `maintenance_assistant.credentials` owns the fixed credential catalogue,
+  encrypted persistence, environment fallback and provider-backed settings
+  resolution.
 - `maintenance_assistant.ingestion` will own the ingestion workflow and its
   domain types.
 - `maintenance_assistant.ingestion.storage` owns the local SQLite database and
@@ -137,12 +140,18 @@ behaviour is implemented and tested.
 The API Docker image runs the same `ama-api` entry point as local development.
 The web image runs the production Next.js standalone server. Compose connects
 the web server to FastAPI on its internal network, sets the API data directory
-to `/app/data` and mounts a named volume there so both processes remain
-disposable while local documents and SQLite state persist.
+to `/app/data` and mounts the same named volume into the API and ingestion
+worker so both can resolve saved credentials. Processes remain disposable while
+local documents, SQLite state and the credential-encryption key persist.
 
 Conversation history shares this SQLite database. Schema version 7 adds
 `conversations` and ordered `conversation_messages`; deleting a conversation
 cascades to its messages without affecting manuals or vectors.
+
+Schema version 13 adds encrypted external credentials. The API atomically
+rebuilds provider-backed services after a credential mutation; the worker
+refreshes its ingestion service before each job. Neither boundary returns or
+logs the complete secret.
 
 The initial container is deliberately bound to the host loopback interface.
 Containerisation does not add authentication or make the API safe to expose to

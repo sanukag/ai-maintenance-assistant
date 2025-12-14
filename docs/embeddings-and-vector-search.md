@@ -17,11 +17,7 @@ response to input order before storage.
 
 ## Privacy boundary
 
-Embedding is disabled by default:
-
-```text
-AMA_EMBEDDING_PROVIDER=none
-```
+Embedding is disabled until an OpenAI API key is available.
 
 Enabling OpenAI embedding sends normalised chunk text, populated equipment
 metadata prefixes and semantic search queries to the OpenAI API. Selected query
@@ -35,14 +31,10 @@ become ordinary source-aware chunk text and are embedded in the same batches.
 The embedding provider receives the description, not the rendered image; the
 visual provider owns the separate rendered-page privacy boundary.
 
-Enable it explicitly:
-
-```bash
-export AMA_EMBEDDING_PROVIDER=openai
-export OPENAI_API_KEY=your-project-api-key
-```
-
-Do not commit an API key to Git or place it in `.env.example`.
+Enable it by adding an OpenAI key under **Settings → API keys**. The key is
+encrypted in local application storage and takes effect immediately. An
+`OPENAI_API_KEY` environment value remains available as a fallback; do not
+commit either value to Git or place it in `.env.example`.
 
 ## Ingestion behaviour
 

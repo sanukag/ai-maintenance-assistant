@@ -7,9 +7,9 @@ schematic, wiring diagram, flow path, technical drawing, chart or table means.
 The visual-analysis stage adds that missing maintenance context as traceable
 text before chunking and embedding.
 
-Visual analysis is opt-in. Original files remain in local storage, but a
-rendered image of each PDF page or an uploaded PNG/JPEG document is sent to the
-configured provider. The initial provider uses OpenAI's Responses API with
+Visual analysis is enabled when an OpenAI API key is available. Original files
+remain in local storage, but a rendered image of each PDF page or an uploaded
+PNG/JPEG document is sent to OpenAI. The integration uses the Responses API with
 schema-constrained output and `store: false`.
 
 ## Processing flow
@@ -38,24 +38,17 @@ visual description can make an image ingestible even when it contains no text.
 
 ## Enable the complete retrieval path
 
-Set these values in the untracked `.env` file:
+Add an OpenAI API key under **Settings → API keys**. The model and bounded image
+settings remain environment-managed if a deployment needs to tune them:
 
 ```env
-AMA_VISUAL_ANALYSIS_PROVIDER=openai
 AMA_VISUAL_ANALYSIS_MODEL=gpt-5.6-terra
 AMA_VISUAL_ANALYSIS_DETAIL=high
-AMA_EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=your-project-api-key
-```
-
-Then rebuild or restart the application:
-
-```bash
-docker compose up --build --detach --wait
 ```
 
 The Settings page and `GET /health` report whether visual analysis is active.
-Newly uploaded manuals are enriched immediately. Re-index an existing manual
+Credential changes take effect immediately. Newly uploaded manuals are enriched
+immediately. Re-index an existing manual
 after enabling the provider so its stored chunks and vectors gain visual
 descriptions.
 
@@ -75,7 +68,7 @@ The stage is intentionally bounded:
 - a 60-second provider timeout and 1,000 output tokens per page; and
 - one schema-constrained result per page, processed synchronously.
 
-Limits are configurable through the `AMA_VISUAL_ANALYSIS_*` settings in
+Limits are configurable through the non-secret `AMA_VISUAL_ANALYSIS_*` settings in
 `.env.example`. Exceeding a page or pixel limit fails before partial content is
 stored. Provider errors and invalid structured results fail ingestion with
 `visual_analysis_failed`; timeouts use `visual_analysis_timed_out`. Storage is

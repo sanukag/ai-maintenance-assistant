@@ -12,15 +12,14 @@ untrusted evidence. The response must contain one score from `0` to `1` for
 every supplied chunk ID, exactly once. Missing, duplicate or unknown IDs cause
 the request to fall back to the deterministic fused order.
 
-Enable it with:
+Reranking becomes available with the OpenAI key managed in Settings. Tune its
+bounded model settings with:
 
 ```text
-AMA_RERANK_PROVIDER=openai
 AMA_RERANK_MODEL=gpt-5.6-terra
 AMA_RERANK_CANDIDATE_LIMIT=15
 AMA_RERANK_MIN_SCORE=0.25
 AMA_RERANK_MAX_OUTPUT_TOKENS=1000
-OPENAI_API_KEY=your-project-api-key
 ```
 
 `AMA_RERANK_CANDIDATE_LIMIT` bounds model input and latency. The minimum score

@@ -22,15 +22,11 @@ ama-api --host 127.0.0.1 --port 8080
 Interactive OpenAPI documentation is available at `/docs`, with the raw schema
 at `/openapi.json`.
 
-The API reads the same environment variables as the command-line ingestion and
-search tools. For example, start it with OpenAI embeddings enabled by exporting
-`AMA_EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY` first. Grounded answers also
-require `AMA_ANSWER_PROVIDER=openai`. Provider settings are fixed for the
-lifetime of the process, so restart the API after changing them.
-
-Set `AMA_VISUAL_ANALYSIS_PROVIDER=openai` to enrich uploaded images and every
-rendered PDF page with maintenance-relevant visual meaning. This is independent
-from OCR and requires `OPENAI_API_KEY`.
+The API reads the same non-secret environment configuration as the command-line
+tools. Add or replace the OpenAI key from the Settings page. The fixed OpenAI
+embedding, reranking, answer and visual-analysis services are rebuilt
+immediately after a credential change. `OPENAI_API_KEY` remains an optional
+process-environment fallback.
 
 ## Routes
 
@@ -38,6 +34,9 @@ from OCR and requires `OPENAI_API_KEY`.
 | --- | --- | --- |
 | `GET` | `/health` | Check storage, OCR, visual analysis and provider availability |
 | `GET` | `/metrics` | Inspect non-sensitive route, cache and SQLite performance aggregates |
+| `GET` | `/credentials` | List non-sensitive API-key availability and source |
+| `PUT` | `/credentials/{credential_name}` | Encrypt and save or replace a supported API key |
+| `DELETE` | `/credentials/{credential_name}` | Delete a saved key and use any environment fallback |
 | `POST` | `/documents` | Upload and ingest one PDF, image, text or Markdown document |
 | `GET` | `/documents` | List metadata with pagination and lifecycle filtering |
 | `GET` | `/metadata/options` | List reusable equipment classifications for tagging controls |

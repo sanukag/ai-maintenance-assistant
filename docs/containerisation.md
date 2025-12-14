@@ -67,24 +67,14 @@ Set `AMA_VECTOR_STORE=sqlite` to bypass Qdrant without removing its stored data.
 `AMA_EMBEDDING_CACHE_MAX_ENTRIES` bounds persistent vector reuse. Both services
 receive the same values through Compose.
 
-Embeddings and grounded answers remain disabled by default. To enable both
-OpenAI providers, set these values only in the untracked `.env` file:
-
-```env
-AMA_EMBEDDING_PROVIDER=openai
-AMA_ANSWER_PROVIDER=openai
-OPENAI_API_KEY=your-project-api-key
-```
+Embeddings, reranking, visual analysis and grounded answers remain disabled
+until an OpenAI API key is available. Prefer adding it from the Settings page.
+It is encrypted in the shared application-data volume, takes effect immediately
+and survives container recreation.
 
 Image and diagram understanding is also disabled by default because it sends a
 rendered image of every PDF page, or an uploaded PNG/JPEG document, to OpenAI.
-Enable the complete visual retrieval path with:
-
-```env
-AMA_VISUAL_ANALYSIS_PROVIDER=openai
-AMA_EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=your-project-api-key
-```
+Adding the OpenAI key also enables the complete visual retrieval path.
 
 `AMA_VISUAL_ANALYSIS_DETAIL=high` provides bounded high-fidelity processing for
 diagram labels. The page count, render resolution, rendered-pixel limit, request
@@ -92,15 +82,11 @@ timeout and output-token limit are configurable through `.env.example`.
 
 `AMA_ANSWER_MODEL` defaults to `gpt-5.6-terra`, and
 `AMA_ANSWER_MAX_OUTPUT_TOKENS` defaults to `1000`. The same runtime key is used
-for visual analysis, embeddings and answers. Restart or recreate the service
-after changing provider settings:
-
-```bash
-docker compose up --build --detach --wait
-```
-
-Do not add a real key to `.env.example`, the Dockerfile or the image. Compose
-passes the key at runtime; it is not required while building the image.
+for visual analysis, embeddings, reranking and answers. Model settings remain
+environment-managed and require a service restart after changes. As a fallback,
+`OPENAI_API_KEY` may be placed in the untracked `.env` file before starting
+Compose. A value saved in Settings takes precedence. Do not add a real key to
+`.env.example`, the Dockerfile or the image.
 
 Set `AMA_OCR_LANGUAGE` to additional installed Tesseract language codes joined
 with `+`. Additional language packages must also be added to the API image;
@@ -117,8 +103,10 @@ The `maintenance-data` named volume contains:
 - the SQLite database;
 - managed copies of ingested documents;
 - queued and failed uploads retained for recovery or retry;
-- extracted chunks and stored vectors; and
-- complete conversation and citation history.
+- extracted chunks and stored vectors;
+- complete conversation and citation history;
+- encrypted external credentials; and
+- the owner-readable credential-encryption key.
 
 The separate `qdrant-data` volume contains the rebuildable HNSW index. SQLite
 keeps the authoritative vector copy, so losing only the Qdrant volume does not
@@ -140,7 +128,9 @@ To deliberately remove all container-managed application data:
 docker compose down --volumes
 ```
 
-That deletion is irreversible unless the volume has been backed up.
+That deletion is irreversible unless the volume has been backed up. Back up
+the SQLite database and `credential-encryption.key` together; either part alone
+cannot restore a saved API key.
 
 ## Runtime safeguards
 
@@ -177,4 +167,5 @@ AMA_RUN_CONTAINER_TESTS=1 pytest tests/container -q
 
 The integration test builds the application images, waits for every health
 check, confirms non-root processes, verifies the web-to-API proxy, uploads a
-real document, restarts the API and checks persistent volumes.
+real document, restarts the API, verifies an encrypted credential survives and
+checks persistent volumes.

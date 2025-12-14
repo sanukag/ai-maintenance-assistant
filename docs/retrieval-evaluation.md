@@ -31,8 +31,6 @@ normal manual library:
 
 ```bash
 export AMA_DATA_DIRECTORY=data/evaluation
-export AMA_EMBEDDING_PROVIDER=openai
-export OPENAI_API_KEY=your-project-api-key
 
 for manual in evals/corpus/*.md; do
   ama-ingest "$manual"
@@ -42,6 +40,10 @@ ama-evaluate-retrieval evals/retrieval-cases.json \
   --limit 5 \
   --output data/evaluation/retrieval-report.json
 ```
+
+Add the OpenAI key in the normal Settings page before running this workflow, or
+set the `OPENAI_API_KEY` environment fallback in this shell. The evaluator and
+CLI resolve the same encrypted application credential as the API.
 
 The report contains every ranked result, aggregate metrics, embedding model and
 dimensions, the configured token budget, overlap and encoding, and the hybrid
