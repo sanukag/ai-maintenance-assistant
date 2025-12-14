@@ -20,9 +20,22 @@ const health = {
   rerank_model: "gpt-rerank-test",
 };
 
+const metrics = {
+  started_at: "2026-07-14T10:00:00Z",
+  uptime_seconds: 120,
+  requests_total: 42,
+  requests_in_flight: 1,
+  errors_total: 0,
+  routes: [],
+  embedding_cache: { entries: 1200, hits: 48, maximum_entries: 10000 },
+  sqlite: { journal_mode: "wal", synchronous: 1, busy_timeout_ms: 5000 },
+};
+
 describe("SettingsPanel", () => {
   beforeEach(() => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json(health)));
+    vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) =>
+      Response.json(String(url).endsWith("/metrics") ? metrics : health)
+    ));
   });
 
   it("separates live system and developer information from the worker workspace", async () => {
@@ -40,6 +53,9 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("AMA_VISUAL_ANALYSIS_PROVIDER")).toBeInTheDocument();
     expect(screen.getByText("AMA_RERANK_PROVIDER")).toBeInTheDocument();
     expect(screen.getByText("Service status")).toBeInTheDocument();
+    expect(screen.getByText("1,200 entries · 48 hits")).toBeInTheDocument();
+    expect(screen.getByText("5,000 ms")).toBeInTheDocument();
+    expect(screen.getByText("AMA_EMBEDDING_CACHE_MAX_ENTRIES")).toBeInTheDocument();
     expect(screen.queryByText("What stays local?")).not.toBeInTheDocument();
     expect(screen.queryByText(/replace-me|sk-/)).not.toBeInTheDocument();
   });
@@ -50,6 +66,6 @@ describe("SettingsPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh status" }));
 
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(4);
   });
 });

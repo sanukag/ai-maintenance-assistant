@@ -16,6 +16,24 @@ export type Health = {
   rerank_model: string | null;
 };
 
+export type RuntimeMetrics = {
+  started_at: string;
+  uptime_seconds: number;
+  requests_total: number;
+  requests_in_flight: number;
+  errors_total: number;
+  routes: Array<{
+    method: string;
+    route: string;
+    count: number;
+    errors: number;
+    average_duration_ms: number;
+    maximum_duration_ms: number;
+  }>;
+  embedding_cache: { entries: number; hits: number; maximum_entries: number };
+  sqlite: { journal_mode: string; synchronous: number; busy_timeout_ms: number };
+};
+
 export type DocumentMetadata = {
   brand: string[];
   machine: string[];

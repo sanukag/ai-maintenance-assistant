@@ -42,7 +42,7 @@ def test_cli_reports_stored_vectors(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "maintenance_assistant.cli.create_embedding_provider",
-        lambda settings: KeywordEmbeddingProvider(),
+        lambda settings, cache=None: KeywordEmbeddingProvider(),
     )
 
     exit_code = main([str(path)])
@@ -69,7 +69,7 @@ def test_search_cli_returns_ranked_chunk(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "maintenance_assistant.cli.create_embedding_provider",
-        lambda configured: KeywordEmbeddingProvider(),
+        lambda configured, cache=None: KeywordEmbeddingProvider(),
     )
 
     exit_code = search_main(["pump repair", "--limit", "1"])

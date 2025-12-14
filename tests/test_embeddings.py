@@ -6,6 +6,8 @@ from openai import OpenAIError
 
 from maintenance_assistant.config import Settings
 from maintenance_assistant.embeddings import (
+    CachingEmbeddingProvider,
+    EmbeddingBatch,
     OpenAIEmbeddingProvider,
     create_embedding_provider,
 )
@@ -134,3 +136,59 @@ def test_provider_factory_builds_openai_provider() -> None:
     )
 
     assert isinstance(provider, OpenAIEmbeddingProvider)
+
+
+def test_caching_provider_reuses_deduplicated_vectors_in_input_order() -> None:
+    class Provider:
+        model = "test-model"
+        dimensions = 2
+
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, ...]] = []
+
+        def embed(self, texts):
+            values = tuple(texts)
+            self.calls.append(values)
+            return EmbeddingBatch(
+                self.model,
+                self.dimensions,
+                tuple((float(len(text)), 1.0) for text in values),
+                7,
+            )
+
+    class Cache:
+        def __init__(self) -> None:
+            self.values: dict[str, tuple[float, ...]] = {}
+
+        def get_cached_embeddings(self, keys, **_kwargs):
+            return {key: self.values[key] for key in keys if key in self.values}
+
+        def put_cached_embeddings(self, entries, **_kwargs):
+            self.values.update(entries)
+
+    raw = Provider()
+    provider = CachingEmbeddingProvider(raw, Cache(), max_entries=5)
+
+    first = provider.embed(["pump", "pump", "valve"])
+    second = provider.embed(["valve", "pump"])
+
+    assert raw.calls == [("pump", "valve")]
+    assert first.vectors == ((4.0, 1.0), (4.0, 1.0), (5.0, 1.0))
+    assert first.input_tokens == 7
+    assert second.vectors == ((5.0, 1.0), (4.0, 1.0))
+    assert second.input_tokens == 0
+
+
+@pytest.mark.parametrize("texts", [[], [""], ["valid", " "]])
+def test_caching_provider_rejects_empty_inputs(texts: list[str]) -> None:
+    raw = Mock(model="test", dimensions=2)
+    cache = Mock()
+    provider = CachingEmbeddingProvider(raw, cache)
+
+    with pytest.raises(ValueError):
+        provider.embed(texts)
+
+
+def test_caching_provider_requires_a_positive_bound() -> None:
+    with pytest.raises(ValueError):
+        CachingEmbeddingProvider(Mock(model="test", dimensions=2), Mock(), max_entries=0)

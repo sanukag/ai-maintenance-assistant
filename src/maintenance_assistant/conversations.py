@@ -377,14 +377,8 @@ class ConversationStore:
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.document_store.database_path)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        try:
-            with connection:
-                yield connection
-        finally:
-            connection.close()
+        with self.document_store._connection() as connection:
+            yield connection
 
 
 def _conversation_title(question: str, maximum_length: int = 80) -> str:

@@ -49,6 +49,8 @@ class Settings:
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 512
     embedding_batch_size: int = 128
+    embedding_cache_max_entries: int = 10_000
+    sqlite_busy_timeout_ms: int = 5_000
     vector_store: str = "sqlite"
     qdrant_url: str = "http://127.0.0.1:6333"
     qdrant_timeout_seconds: int = 5
@@ -204,6 +206,16 @@ class Settings:
         )
         if embedding_batch_size > 2048:
             raise ValueError("AMA_EMBEDDING_BATCH_SIZE must not exceed 2048")
+        embedding_cache_max_entries = _non_negative_integer(
+            values.get("AMA_EMBEDDING_CACHE_MAX_ENTRIES", "10000"),
+            "AMA_EMBEDDING_CACHE_MAX_ENTRIES",
+        )
+        sqlite_busy_timeout_ms = _positive_integer(
+            values.get("AMA_SQLITE_BUSY_TIMEOUT_MS", "5000"),
+            "AMA_SQLITE_BUSY_TIMEOUT_MS",
+        )
+        if sqlite_busy_timeout_ms > 60_000:
+            raise ValueError("AMA_SQLITE_BUSY_TIMEOUT_MS must not exceed 60000")
         vector_store = values.get("AMA_VECTOR_STORE", "sqlite").strip().lower()
         if vector_store not in VALID_VECTOR_STORES:
             allowed = ", ".join(sorted(VALID_VECTOR_STORES))
@@ -308,6 +320,8 @@ class Settings:
             embedding_model=embedding_model,
             embedding_dimensions=embedding_dimensions,
             embedding_batch_size=embedding_batch_size,
+            embedding_cache_max_entries=embedding_cache_max_entries,
+            sqlite_busy_timeout_ms=sqlite_busy_timeout_ms,
             vector_store=vector_store,
             qdrant_url=qdrant_url,
             qdrant_timeout_seconds=qdrant_timeout_seconds,

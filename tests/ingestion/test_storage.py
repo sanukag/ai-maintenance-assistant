@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from hashlib import sha256
 from pathlib import Path
 import sqlite3
@@ -340,7 +342,7 @@ def test_store_migrates_existing_version_one_database(tmp_path: Path) -> None:
         ).fetchone()
     finally:
         connection.close()
-    assert version == 11
+    assert version == 12
     assert embedding_table == ("embeddings",)
     assert conversation_table == ("conversations",)
     assert feedback_table == ("conversation_message_feedback",)
@@ -567,3 +569,57 @@ def test_store_rejects_invalid_vectors(
         )
 
     assert captured.value.code is IngestionErrorCode.STORAGE_FAILED
+
+
+def test_store_persists_bounded_embedding_cache_and_records_hits(tmp_path: Path) -> None:
+    store = LocalDocumentStore(tmp_path / "data")
+    store.put_cached_embeddings(
+        {"first": (1.0, 0.0), "second": (0.0, 1.0)},
+        model="test-model",
+        dimensions=2,
+        max_entries=2,
+    )
+
+    cached = store.get_cached_embeddings(
+        ["first", "missing"], model="test-model", dimensions=2
+    )
+    store.put_cached_embeddings(
+        {"third": (0.5, 0.5)},
+        model="test-model",
+        dimensions=2,
+        max_entries=2,
+    )
+
+    assert cached == {"first": pytest.approx((1.0, 0.0))}
+    remaining = store.get_cached_embeddings(
+        ["first", "second", "third"], model="test-model", dimensions=2
+    )
+    assert set(remaining) == {"first", "third"}
+    assert store.embedding_cache_stats() == {"entries": 2, "hits": 3}
+
+
+def test_store_enables_wal_normal_sync_and_configured_busy_timeout(tmp_path: Path) -> None:
+    store = LocalDocumentStore(tmp_path / "data", busy_timeout_ms=12_000)
+
+    assert store.sqlite_runtime() == {
+        "journal_mode": "wal",
+        "synchronous": 1,
+        "busy_timeout_ms": 12_000,
+    }
+
+
+def test_store_initialises_once_when_called_concurrently(tmp_path: Path) -> None:
+    store = LocalDocumentStore(tmp_path / "data")
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(lambda _: store.initialise(), range(24)))
+
+    with closing(sqlite3.connect(store.database_path)) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 12
+    assert store._initialised is True
+
+
+@pytest.mark.parametrize("timeout", [0, 60_001])
+def test_store_rejects_invalid_busy_timeout(tmp_path: Path, timeout: int) -> None:
+    with pytest.raises(ValueError):
+        LocalDocumentStore(tmp_path / "data", timeout)

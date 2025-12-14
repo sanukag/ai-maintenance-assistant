@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from hashlib import sha256
 from math import isfinite
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
 from openai import OpenAI, OpenAIError
 
@@ -31,6 +32,27 @@ class EmbeddingProvider(Protocol):
 
     def embed(self, texts: Sequence[str]) -> EmbeddingBatch:
         """Return one ordered vector for each supplied text."""
+
+
+class EmbeddingCache(Protocol):
+    """Persistence seam used without coupling providers to SQLite."""
+
+    def get_cached_embeddings(
+        self,
+        cache_keys: Sequence[str],
+        *,
+        model: str,
+        dimensions: int,
+    ) -> Mapping[str, tuple[float, ...]]: ...
+
+    def put_cached_embeddings(
+        self,
+        entries: Mapping[str, Sequence[float]],
+        *,
+        model: str,
+        dimensions: int,
+        max_entries: int,
+    ) -> None: ...
 
 
 class OpenAIEmbeddingProvider:
@@ -112,16 +134,91 @@ class OpenAIEmbeddingProvider:
         )
 
 
-def create_embedding_provider(settings: Settings) -> EmbeddingProvider | None:
+class CachingEmbeddingProvider:
+    """Reuse identical model inputs across ingestion, search and restarts."""
+
+    def __init__(
+        self,
+        provider: EmbeddingProvider,
+        cache: EmbeddingCache,
+        *,
+        max_entries: int = 10_000,
+    ) -> None:
+        if max_entries < 1:
+            raise ValueError("max_entries must be greater than zero")
+        self.provider = provider
+        self.cache = cache
+        self.max_entries = max_entries
+        self.model = provider.model
+        self.dimensions = provider.dimensions
+
+    def embed(self, texts: Sequence[str]) -> EmbeddingBatch:
+        inputs = tuple(texts)
+        if not inputs:
+            raise ValueError("at least one text value is required")
+        if any(not text.strip() for text in inputs):
+            raise ValueError("embedding input must not be empty")
+        keys = tuple(self._key(text) for text in inputs)
+        cached = dict(
+            self.cache.get_cached_embeddings(
+                keys,
+                model=self.model,
+                dimensions=self.dimensions,
+            )
+        )
+        missing: dict[str, str] = {}
+        for key, text in zip(keys, inputs, strict=True):
+            if key not in cached:
+                missing.setdefault(key, text)
+        input_tokens = 0
+        if missing:
+            batch = self.provider.embed(tuple(missing.values()))
+            if len(batch.vectors) != len(missing):
+                raise IngestionError(
+                    IngestionErrorCode.EMBEDDING_FAILED,
+                    "Embedding provider returned an unexpected vector count",
+                )
+            generated = dict(zip(missing, batch.vectors, strict=True))
+            self.cache.put_cached_embeddings(
+                generated,
+                model=self.model,
+                dimensions=self.dimensions,
+                max_entries=self.max_entries,
+            )
+            cached.update(generated)
+            input_tokens = batch.input_tokens
+        return EmbeddingBatch(
+            model=self.model,
+            dimensions=self.dimensions,
+            vectors=tuple(cached[key] for key in keys),
+            input_tokens=input_tokens,
+        )
+
+    def _key(self, text: str) -> str:
+        value = f"{self.model}\0{self.dimensions}\0{text}".encode("utf-8")
+        return sha256(value).hexdigest()
+
+
+def create_embedding_provider(
+    settings: Settings,
+    cache: EmbeddingCache | None = None,
+) -> EmbeddingProvider | None:
     """Create the configured production provider, or preserve local-only mode."""
 
     if settings.embedding_provider == "none":
         return None
     if settings.embedding_provider == "openai" and settings.openai_api_key:
-        return OpenAIEmbeddingProvider(
+        provider: EmbeddingProvider = OpenAIEmbeddingProvider(
             api_key=settings.openai_api_key,
             model=settings.embedding_model,
             dimensions=settings.embedding_dimensions,
             batch_size=settings.embedding_batch_size,
         )
+        if cache is not None and settings.embedding_cache_max_entries > 0:
+            return CachingEmbeddingProvider(
+                provider,
+                cache,
+                max_entries=settings.embedding_cache_max_entries,
+            )
+        return provider
     raise ValueError(f"Unsupported embedding provider: {settings.embedding_provider}")

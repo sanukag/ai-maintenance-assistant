@@ -478,7 +478,7 @@ def test_evaluation_cli_writes_report_and_applies_quality_gates(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "maintenance_assistant.cli.create_embedding_provider",
-        lambda configured: searcher.embedding_provider,
+        lambda configured, cache=None: searcher.embedding_provider,
     )
 
     exit_code = evaluation_main(
@@ -534,7 +534,7 @@ def test_evaluation_cli_reports_configuration_and_quality_gate_failures(
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setattr(
         "maintenance_assistant.cli.create_embedding_provider",
-        lambda configured: searcher.embedding_provider,
+        lambda configured, cache=None: searcher.embedding_provider,
     )
 
     failed_gate = evaluation_main(

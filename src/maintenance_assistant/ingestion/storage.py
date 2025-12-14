@@ -14,6 +14,7 @@ import shutil
 import sqlite3
 import struct
 import tempfile
+from threading import Lock
 from typing import Mapping, Sequence
 from uuid import uuid4
 
@@ -290,90 +291,121 @@ CREATE INDEX IF NOT EXISTS ingestion_jobs_status_created_idx
 ON ingestion_jobs(status, created_at);
 """
 
-_CURRENT_SCHEMA_VERSION = 11
+_MIGRATION_VERSION_12 = """
+CREATE TABLE IF NOT EXISTS embedding_cache (
+    cache_key TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    dimensions INTEGER NOT NULL CHECK (dimensions > 0),
+    vector BLOB NOT NULL CHECK (length(vector) = dimensions * 4),
+    created_at TEXT NOT NULL,
+    last_accessed_at TEXT NOT NULL,
+    hit_count INTEGER NOT NULL DEFAULT 0 CHECK (hit_count >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS embedding_cache_access_idx
+ON embedding_cache(last_accessed_at);
+"""
+
+_CURRENT_SCHEMA_VERSION = 12
 
 
 class LocalDocumentStore:
     """Persist original files, document metadata and chunks under one data root."""
 
-    def __init__(self, data_directory: Path) -> None:
+    def __init__(self, data_directory: Path, busy_timeout_ms: int = 5_000) -> None:
+        if busy_timeout_ms < 1 or busy_timeout_ms > 60_000:
+            raise ValueError("busy_timeout_ms must be between 1 and 60000")
         self.data_directory = data_directory.expanduser().resolve()
         self.database_path = self.data_directory / "maintenance-assistant.db"
         self.documents_directory = self.data_directory / "documents"
+        self.busy_timeout_ms = busy_timeout_ms
+        self._initialise_lock = Lock()
+        self._initialised = False
 
     def initialise(self) -> None:
         """Create local directories and migrate the database to the current schema."""
 
-        self.documents_directory.mkdir(parents=True, exist_ok=True)
-        try:
-            with self._connection() as connection:
-                version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version == 0:
-                    connection.executescript(_SCHEMA_VERSION_1)
-                    connection.execute("PRAGMA user_version = 1")
-                    version = 1
-                if version == 1:
-                    connection.executescript(_MIGRATION_VERSION_2)
-                    connection.execute("PRAGMA user_version = 2")
-                    version = 2
-                if version == 2:
-                    connection.executescript(_MIGRATION_VERSION_3)
-                    connection.execute("PRAGMA user_version = 3")
-                    version = 3
-                if version == 3:
-                    connection.executescript(_MIGRATION_VERSION_4)
-                    connection.execute("PRAGMA user_version = 4")
-                    version = 4
-                if version == 4:
-                    connection.executescript(_MIGRATION_VERSION_5)
-                    connection.execute("PRAGMA user_version = 5")
-                    version = 5
-                if version == 5:
-                    connection.executescript(_MIGRATION_VERSION_6)
-                    connection.execute("PRAGMA user_version = 6")
-                    version = 6
-                if version == 6:
-                    connection.executescript(_MIGRATION_VERSION_7)
-                    connection.execute("PRAGMA user_version = 7")
-                    version = 7
-                if version == 7:
-                    connection.executescript(_MIGRATION_VERSION_8)
-                    connection.execute("PRAGMA user_version = 8")
-                    version = 8
-                if version == 8:
-                    connection.executescript(_MIGRATION_VERSION_9)
-                    connection.execute("PRAGMA user_version = 9")
-                    version = 9
-                if version == 9:
-                    connection.executescript(_MIGRATION_VERSION_10)
-                    rows = connection.execute(
-                        "SELECT brand, machine, site, document_type FROM documents"
-                    ).fetchall()
-                    for row in rows:
-                        _store_metadata_options(
-                            connection,
-                            DocumentMetadata(
-                                brand=row["brand"],
-                                machine=row["machine"],
-                                site=row["site"],
-                                document_type=row["document_type"],
-                            ),
+        if self._initialised:
+            return
+        with self._initialise_lock:
+            if self._initialised:
+                return
+            self.documents_directory.mkdir(parents=True, exist_ok=True)
+            try:
+                with self._connection() as connection:
+                    connection.execute("PRAGMA journal_mode = WAL")
+                    version = connection.execute("PRAGMA user_version").fetchone()[0]
+                    if version == 0:
+                        connection.executescript(_SCHEMA_VERSION_1)
+                        connection.execute("PRAGMA user_version = 1")
+                        version = 1
+                    if version == 1:
+                        connection.executescript(_MIGRATION_VERSION_2)
+                        connection.execute("PRAGMA user_version = 2")
+                        version = 2
+                    if version == 2:
+                        connection.executescript(_MIGRATION_VERSION_3)
+                        connection.execute("PRAGMA user_version = 3")
+                        version = 3
+                    if version == 3:
+                        connection.executescript(_MIGRATION_VERSION_4)
+                        connection.execute("PRAGMA user_version = 4")
+                        version = 4
+                    if version == 4:
+                        connection.executescript(_MIGRATION_VERSION_5)
+                        connection.execute("PRAGMA user_version = 5")
+                        version = 5
+                    if version == 5:
+                        connection.executescript(_MIGRATION_VERSION_6)
+                        connection.execute("PRAGMA user_version = 6")
+                        version = 6
+                    if version == 6:
+                        connection.executescript(_MIGRATION_VERSION_7)
+                        connection.execute("PRAGMA user_version = 7")
+                        version = 7
+                    if version == 7:
+                        connection.executescript(_MIGRATION_VERSION_8)
+                        connection.execute("PRAGMA user_version = 8")
+                        version = 8
+                    if version == 8:
+                        connection.executescript(_MIGRATION_VERSION_9)
+                        connection.execute("PRAGMA user_version = 9")
+                        version = 9
+                    if version == 9:
+                        connection.executescript(_MIGRATION_VERSION_10)
+                        rows = connection.execute(
+                            "SELECT brand, machine, site, document_type FROM documents"
+                        ).fetchall()
+                        for row in rows:
+                            _store_metadata_options(
+                                connection,
+                                DocumentMetadata(
+                                    brand=row["brand"],
+                                    machine=row["machine"],
+                                    site=row["site"],
+                                    document_type=row["document_type"],
+                                ),
+                            )
+                        connection.execute("PRAGMA user_version = 10")
+                        version = 10
+                    if version == 10:
+                        connection.executescript(_MIGRATION_VERSION_11)
+                        connection.execute("PRAGMA user_version = 11")
+                        version = 11
+                    if version == 11:
+                        connection.executescript(_MIGRATION_VERSION_12)
+                        connection.execute("PRAGMA user_version = 12")
+                        version = 12
+                    if version != _CURRENT_SCHEMA_VERSION:
+                        raise sqlite3.DatabaseError(
+                            f"Unsupported database schema version: {version}"
                         )
-                    connection.execute("PRAGMA user_version = 10")
-                    version = 10
-                if version == 10:
-                    connection.executescript(_MIGRATION_VERSION_11)
-                    connection.execute("PRAGMA user_version = 11")
-                    version = 11
-                if version != _CURRENT_SCHEMA_VERSION:
-                    raise sqlite3.DatabaseError(
-                        f"Unsupported database schema version: {version}"
-                    )
-        except sqlite3.Error as error:
-            raise IngestionError(
-                IngestionErrorCode.STORAGE_FAILED,
-                "Local document storage could not be initialised",
-            ) from error
+            except sqlite3.Error as error:
+                raise IngestionError(
+                    IngestionErrorCode.STORAGE_FAILED,
+                    "Local document storage could not be initialised",
+                ) from error
+            self._initialised = True
 
     def find_by_hash(self, content_hash: str) -> StoredDocument | None:
         """Find an existing document by its content fingerprint."""
@@ -1289,11 +1321,118 @@ class LocalDocumentStore:
             )
         return tuple(results)
 
+    def get_cached_embeddings(
+        self,
+        cache_keys: Sequence[str],
+        *,
+        model: str,
+        dimensions: int,
+    ) -> dict[str, tuple[float, ...]]:
+        """Return cached vectors and atomically record their reuse."""
+
+        keys = tuple(dict.fromkeys(cache_keys))
+        if not keys:
+            return {}
+        self.initialise()
+        placeholders = ",".join("?" for _ in keys)
+        now = datetime.now(UTC).isoformat()
+        with self._connection() as connection:
+            rows = connection.execute(
+                f"""SELECT cache_key, vector FROM embedding_cache
+                    WHERE cache_key IN ({placeholders})
+                    AND model = ? AND dimensions = ?""",
+                (*keys, model, dimensions),
+            ).fetchall()
+            found = tuple(row["cache_key"] for row in rows)
+            if found:
+                found_placeholders = ",".join("?" for _ in found)
+                connection.execute(
+                    f"""UPDATE embedding_cache
+                        SET last_accessed_at = ?, hit_count = hit_count + 1
+                        WHERE cache_key IN ({found_placeholders})""",
+                    (now, *found),
+                )
+        return {
+            row["cache_key"]: _unpack_vector(row["vector"], dimensions)
+            for row in rows
+        }
+
+    def put_cached_embeddings(
+        self,
+        entries: Mapping[str, Sequence[float]],
+        *,
+        model: str,
+        dimensions: int,
+        max_entries: int,
+    ) -> None:
+        """Persist reusable vectors and enforce a least-recently-used bound."""
+
+        if not entries or max_entries < 1:
+            return
+        for vector in entries.values():
+            if len(vector) != dimensions or not all(isfinite(value) for value in vector):
+                raise ValueError("cached embedding has an invalid vector")
+        self.initialise()
+        now = datetime.now(UTC).isoformat()
+        with self._connection() as connection:
+            connection.executemany(
+                """INSERT INTO embedding_cache (
+                       cache_key, model, dimensions, vector,
+                       created_at, last_accessed_at, hit_count
+                   ) VALUES (?, ?, ?, ?, ?, ?, 0)
+                   ON CONFLICT(cache_key) DO UPDATE SET
+                       vector = excluded.vector,
+                       last_accessed_at = excluded.last_accessed_at""",
+                (
+                    (key, model, dimensions, _pack_vector(vector), now, now)
+                    for key, vector in entries.items()
+                ),
+            )
+            connection.execute(
+                """DELETE FROM embedding_cache WHERE cache_key IN (
+                       SELECT cache_key FROM embedding_cache
+                       ORDER BY last_accessed_at DESC, cache_key DESC
+                       LIMIT -1 OFFSET ?
+                   )""",
+                (max_entries,),
+            )
+
+    def embedding_cache_stats(self) -> dict[str, int]:
+        """Return non-sensitive aggregate cache information."""
+
+        self.initialise()
+        with self._connection() as connection:
+            row = connection.execute(
+                """SELECT COUNT(*) AS entries,
+                          COALESCE(SUM(hit_count), 0) AS hits
+                   FROM embedding_cache"""
+            ).fetchone()
+        return {"entries": int(row["entries"]), "hits": int(row["hits"])}
+
+    def sqlite_runtime(self) -> dict[str, str | int]:
+        """Report active concurrency settings for operational diagnosis."""
+
+        self.initialise()
+        with self._connection() as connection:
+            journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+            synchronous = connection.execute("PRAGMA synchronous").fetchone()[0]
+            busy_timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+        return {
+            "journal_mode": str(journal_mode),
+            "synchronous": int(synchronous),
+            "busy_timeout_ms": int(busy_timeout),
+        }
+
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.database_path)
+        connection = sqlite3.connect(
+            self.database_path,
+            timeout=self.busy_timeout_ms / 1_000,
+        )
         connection.row_factory = sqlite3.Row
+        connection.execute(f"PRAGMA busy_timeout = {self.busy_timeout_ms}")
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA synchronous = NORMAL")
         try:
             with connection:
                 yield connection

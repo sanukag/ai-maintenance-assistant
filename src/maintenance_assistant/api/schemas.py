@@ -60,6 +60,42 @@ class HealthResponse(BaseModel):
     rerank_model: str | None
 
 
+class RouteMetricResponse(BaseModel):
+    """Aggregate timings for one method and templated API route."""
+
+    method: str
+    route: str
+    count: int
+    errors: int
+    average_duration_ms: float
+    maximum_duration_ms: float
+
+
+class EmbeddingCacheMetricResponse(BaseModel):
+    entries: int
+    hits: int
+    maximum_entries: int
+
+
+class SQLiteRuntimeResponse(BaseModel):
+    journal_mode: str
+    synchronous: int
+    busy_timeout_ms: int
+
+
+class RuntimeMetricsResponse(BaseModel):
+    """Non-sensitive local performance and cache measurements."""
+
+    started_at: datetime
+    uptime_seconds: float
+    requests_total: int
+    requests_in_flight: int
+    errors_total: int
+    routes: list[RouteMetricResponse]
+    embedding_cache: EmbeddingCacheMetricResponse
+    sqlite: SQLiteRuntimeResponse
+
+
 class DocumentMetadataResponse(BaseModel):
     """Worker-supplied equipment and document classification."""
 

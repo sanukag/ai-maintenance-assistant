@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
 from maintenance_assistant.api.errors import ApiError
@@ -26,6 +26,7 @@ from maintenance_assistant.api.schemas import (
     MetadataOptionsResponse,
     MetadataOptionChangeRequest,
     MetadataOptionChangeResponse,
+    RuntimeMetricsResponse,
     ReindexResponse,
     ResponseFeedbackRequest,
     ResponseFeedbackResponse,
@@ -94,6 +95,22 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
         reranking="enabled" if services.reranker is not None else "disabled",
         rerank_model=services.reranker.model if services.reranker is not None else None,
     )
+
+
+@router.get("/metrics", response_model=RuntimeMetricsResponse, tags=["system"])
+def runtime_metrics(
+    request: Request,
+    services: ApiServices = Depends(get_services),
+) -> RuntimeMetricsResponse:
+    """Return aggregate timings and local storage performance state."""
+
+    snapshot = request.app.state.runtime_metrics.snapshot()
+    snapshot["embedding_cache"] = {
+        **services.store.embedding_cache_stats(),
+        "maximum_entries": services.settings.embedding_cache_max_entries,
+    }
+    snapshot["sqlite"] = services.store.sqlite_runtime()
+    return RuntimeMetricsResponse.model_validate(snapshot)
 
 
 @router.post(
