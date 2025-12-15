@@ -117,6 +117,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span><strong>Assistant</strong><small>Maintenance workspace</small></span>
             {pathname === "/" && <span className="nav-active-dot" />}
           </Link>
+          <Link className={`nav-item ${pathname.startsWith("/diagnostics") ? "nav-item-active" : ""}`} href="/diagnostics" onClick={() => setOpen(false)} aria-current={pathname.startsWith("/diagnostics") ? "page" : undefined}>
+            <span className="nav-icon"><Icon name="wrench" /></span>
+            <span><strong>Diagnose a fault</strong><small>Guided investigation</small></span>
+            {pathname.startsWith("/diagnostics") && <span className="nav-active-dot" />}
+          </Link>
         </nav>
 
         <section className="sidebar-history" aria-label="Previous conversations">

@@ -9,6 +9,12 @@ from maintenance_assistant.api.app import _ingestion_status, create_app
 from maintenance_assistant.api.errors import ApiError
 from maintenance_assistant.api.routes import _safe_filename
 from maintenance_assistant.config import Settings
+from maintenance_assistant.diagnostic_planner import GeneratedDiagnosticPlan
+from maintenance_assistant.diagnostics import (
+    DiagnosticAction,
+    DiagnosticSafetyStatus,
+    DiagnosticState,
+)
 from maintenance_assistant.ingestion import IngestionErrorCode
 from maintenance_assistant.jobs import IngestionWorker
 from tests.fakes import (
@@ -28,6 +34,30 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
     }
     values.update(overrides)
     return Settings(**values)
+
+
+class FixedDiagnosticProvider:
+    model = "diagnostic-test"
+
+    def plan(
+        self,
+        latest_message,
+        state,
+        recent_turns,
+        sources,
+        safety_status,
+    ) -> GeneratedDiagnosticPlan:
+        return GeneratedDiagnosticPlan(
+            action=DiagnosticAction.ASK_QUESTION,
+            message="Does the fault occur immediately or after the machine has run?",
+            state=DiagnosticState(
+                symptoms=state.symptoms,
+                observations=state.observations + (latest_message,),
+                summary="The machine has an unresolved operating fault.",
+            ),
+            citation_ids=(),
+            model=self.model,
+        )
 
 
 def test_health_reports_local_services(tmp_path: Path) -> None:
@@ -53,6 +83,8 @@ def test_health_reports_local_services(tmp_path: Path) -> None:
         "embedding_model": None,
         "answers": "disabled",
         "answer_model": None,
+        "diagnostics": "disabled",
+        "diagnostic_model": None,
         "vector_store": "sqlite",
         "vector_index": "disabled",
         "reranking": "disabled",
@@ -90,6 +122,84 @@ def test_metrics_report_templated_routes_cache_and_sqlite_runtime(tmp_path: Path
         row["method"] == "GET" and row["route"] == "/documents/{document_id}"
         for row in body["routes"]
     )
+
+
+def test_guided_diagnostic_session_lifecycle_and_follow_up(tmp_path: Path) -> None:
+    application = create_app(
+        settings=_settings(tmp_path, ocr_provider="none"),
+        embedding_provider=KeywordEmbeddingProvider(),
+        diagnostic_provider=FixedDiagnosticProvider(),
+        ocr_provider=None,
+    )
+
+    with TestClient(application) as client:
+        health = client.get("/health")
+        created = client.post(
+            "/diagnostic-sessions",
+            json={
+                "message": "Pump trips after five minutes",
+                "brand": ["Acme"],
+                "machine": ["P-100"],
+                "safety_status": "non_intrusive_only",
+            },
+        )
+        session_id = created.json()["session"]["id"]
+        continued = client.post(
+            f"/diagnostic-sessions/{session_id}/turns",
+            json={
+                "message": "It trips only when loaded",
+                "safety_status": "confirmed_safe",
+            },
+        )
+        listed = client.get("/diagnostic-sessions")
+        reopened = client.get(f"/diagnostic-sessions/{session_id}")
+        deleted = client.delete(f"/diagnostic-sessions/{session_id}")
+        missing = client.get(f"/diagnostic-sessions/{session_id}")
+
+    assert health.json()["diagnostics"] == "enabled"
+    assert health.json()["diagnostic_model"] == "diagnostic-test"
+    assert created.status_code == 201
+    assert [turn["role"] for turn in created.json()["turns"]] == ["user", "assistant"]
+    assert created.json()["session"]["metadata"]["machine"] == ["P-100"]
+    assert continued.status_code == 200
+    assert continued.json()["session"]["safety_status"] == "confirmed_safe"
+    assert len(continued.json()["turns"]) == 4
+    assert listed.json()["items"][0]["id"] == session_id
+    assert reopened.json()["session"]["state"]["summary"]
+    assert deleted.status_code == 204
+    assert missing.status_code == 404
+
+
+def test_diagnostics_require_runtime_providers_and_existing_session(tmp_path: Path) -> None:
+    disabled_app = create_app(
+        settings=_settings(tmp_path / "disabled"),
+        embedding_provider=None,
+        diagnostic_provider=None,
+    )
+    enabled_app = create_app(
+        settings=_settings(tmp_path / "enabled"),
+        embedding_provider=KeywordEmbeddingProvider(),
+        diagnostic_provider=FixedDiagnosticProvider(),
+    )
+
+    with TestClient(disabled_app) as client:
+        disabled = client.post(
+            "/diagnostic-sessions", json={"message": "Motor is noisy"}
+        )
+    with TestClient(enabled_app) as client:
+        missing = client.post(
+            "/diagnostic-sessions/missing/turns", json={"message": "What next?"}
+        )
+        invalid = client.post(
+            "/diagnostic-sessions",
+            json={"message": "Motor is noisy", "safety_status": "definitely_safe"},
+        )
+
+    assert disabled.status_code == 503
+    assert disabled.json()["error"]["code"] == "diagnostics_disabled"
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "diagnostic_session_not_found"
+    assert invalid.status_code == 422
 
 
 def test_api_keys_can_be_saved_edited_deleted_and_reused_after_restart(
@@ -612,8 +722,11 @@ def test_openapi_describes_the_initial_api_surface(tmp_path: Path) -> None:
         "/answers",
         "/conversations",
         "/conversations/{conversation_id}",
-        "/conversations/{conversation_id}/messages/{message_id}/feedback",
-    }
+            "/conversations/{conversation_id}/messages/{message_id}/feedback",
+            "/diagnostic-sessions",
+            "/diagnostic-sessions/{session_id}",
+            "/diagnostic-sessions/{session_id}/turns",
+        }
 
 
 def test_vector_index_rebuild_requires_qdrant_mode(tmp_path: Path) -> None:

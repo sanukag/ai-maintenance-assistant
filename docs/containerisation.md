@@ -105,6 +105,7 @@ The `maintenance-data` named volume contains:
 - queued and failed uploads retained for recovery or retry;
 - extracted chunks and stored vectors;
 - complete conversation and citation history;
+- guided diagnostic state, turn history and evidence snapshots;
 - encrypted external credentials; and
 - the owner-readable credential-encryption key.
 

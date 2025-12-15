@@ -18,6 +18,11 @@ from maintenance_assistant.api.schemas import (
     CredentialListResponse,
     CredentialStatusResponse,
     CredentialUpdateRequest,
+    DiagnosticSessionCreateRequest,
+    DiagnosticSessionListResponse,
+    DiagnosticSessionResponse,
+    DiagnosticSessionSummaryResponse,
+    DiagnosticTurnRequest,
     DocumentListResponse,
     DocumentMetadataRequest,
     DocumentResponse,
@@ -88,6 +93,12 @@ def health(services: ApiServices = Depends(get_services)) -> HealthResponse:
         embedding_model=provider.model if provider is not None else None,
         answers="enabled" if services.answers is not None else "disabled",
         answer_model=answer_provider.model if answer_provider is not None else None,
+        diagnostics="enabled" if services.diagnostics is not None else "disabled",
+        diagnostic_model=(
+            services.diagnostic_provider.model
+            if services.diagnostic_provider is not None
+            else None
+        ),
         vector_store=services.settings.vector_store,
         vector_index=(
             "disabled"
@@ -605,6 +616,108 @@ def answer_question(
             "Conversation was not found",
         ) from error
     return AnswerResponse.from_answer(answer, conversation.conversation.id)
+
+
+@router.post(
+    "/diagnostic-sessions",
+    response_model=DiagnosticSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["diagnostics"],
+)
+def create_diagnostic_session(
+    request: DiagnosticSessionCreateRequest,
+    services: ApiServices = Depends(get_services),
+) -> DiagnosticSessionResponse:
+    """Start a grounded, stateful fault investigation."""
+
+    if services.diagnostics is None:
+        raise ApiError(
+            503,
+            "diagnostics_disabled",
+            "Guided diagnostics require enabled embedding and answer services",
+        )
+    try:
+        detail = services.diagnostics.start_session(
+            request.message,
+            document_id=request.document_id,
+            metadata=request.as_metadata(),
+            safety_status=request.safety_status,
+        )
+    except KeyError as error:
+        raise ApiError(404, "document_not_found", "Document was not found") from error
+    return DiagnosticSessionResponse.from_detail(detail)
+
+
+@router.post(
+    "/diagnostic-sessions/{session_id}/turns",
+    response_model=DiagnosticSessionResponse,
+    tags=["diagnostics"],
+)
+def continue_diagnostic_session(
+    session_id: str,
+    request: DiagnosticTurnRequest,
+    services: ApiServices = Depends(get_services),
+) -> DiagnosticSessionResponse:
+    """Apply one worker observation or question to an existing investigation."""
+
+    if services.diagnostics is None:
+        raise ApiError(503, "diagnostics_disabled", "Guided diagnostics are not enabled")
+    try:
+        detail = services.diagnostics.continue_session(
+            session_id,
+            request.message,
+            safety_status=request.safety_status,
+        )
+    except KeyError as error:
+        raise ApiError(404, "diagnostic_session_not_found", "Diagnostic session was not found") from error
+    return DiagnosticSessionResponse.from_detail(detail)
+
+
+@router.get(
+    "/diagnostic-sessions",
+    response_model=DiagnosticSessionListResponse,
+    tags=["diagnostics"],
+)
+def list_diagnostic_sessions(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    services: ApiServices = Depends(get_services),
+) -> DiagnosticSessionListResponse:
+    sessions = services.diagnostic_store.list_sessions(limit=limit, offset=offset)
+    return DiagnosticSessionListResponse(
+        items=[DiagnosticSessionSummaryResponse.from_session(item) for item in sessions],
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/diagnostic-sessions/{session_id}",
+    response_model=DiagnosticSessionResponse,
+    tags=["diagnostics"],
+)
+def get_diagnostic_session(
+    session_id: str,
+    services: ApiServices = Depends(get_services),
+) -> DiagnosticSessionResponse:
+    detail = services.diagnostic_store.get_session(session_id)
+    if detail is None:
+        raise ApiError(404, "diagnostic_session_not_found", "Diagnostic session was not found")
+    return DiagnosticSessionResponse.from_detail(detail)
+
+
+@router.delete(
+    "/diagnostic-sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["diagnostics"],
+)
+def delete_diagnostic_session(
+    session_id: str,
+    services: ApiServices = Depends(get_services),
+) -> Response:
+    if not services.diagnostic_store.delete_session(session_id):
+        raise ApiError(404, "diagnostic_session_not_found", "Diagnostic session was not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

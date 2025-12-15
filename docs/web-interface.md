@@ -13,6 +13,9 @@ The interface has three focused areas:
   use common-question starters and inspect the exact evidence behind an answer.
   The vertical navigation lists every saved conversation below Assistant, newest
   first in a scrollable region. Workers can reopen, continue or delete a thread.
+- **Diagnose a fault** runs a guided investigation. Workers supply symptoms,
+  observations, readings and follow-up questions while a live side panel shows
+  competing hypotheses, contrary evidence, completed checks and safety state.
 - **Manuals** provides drag-and-drop or file-picker upload, current and retained
   revision views, replacement, re-indexing, archiving and confirmed permanent
   deletion. It accepts digital or scanned PDFs, PNG/JPEG document images, text

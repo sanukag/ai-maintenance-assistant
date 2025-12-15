@@ -122,6 +122,11 @@ a stable local refusal with no citations.
   second-stage relevance scoring with deterministic retrieval fallback.
 - `maintenance_assistant.answering` owns evidence labelling, the real OpenAI
   Responses API provider and citation validation.
+- `maintenance_assistant.diagnostics` owns the durable investigation state and
+  immutable case-turn ledger.
+- `maintenance_assistant.diagnostic_planner` owns bounded conversational
+  context, diagnostic retrieval, typed planning, safety gates and citation
+  validation.
 - `maintenance_assistant.conversations` atomically stores complete worker and
   assistant exchanges, citation snapshots and conversation lifecycle operations.
 - `maintenance_assistant.api` owns HTTP validation and response models while
@@ -152,6 +157,11 @@ Schema version 13 adds encrypted external credentials. The API atomically
 rebuilds provider-backed services after a credential mutation; the worker
 refreshes its ingestion service before each job. Neither boundary returns or
 logs the complete secret.
+
+Schema version 14 adds guided diagnostic sessions and turns. The local state is
+authoritative; provider-side response storage is disabled. Existing worker facts
+are merged forward deterministically while hypotheses may be revised as new
+observations contradict them.
 
 The initial container is deliberately bound to the host loopback interface.
 Containerisation does not add authentication or make the API safe to expose to

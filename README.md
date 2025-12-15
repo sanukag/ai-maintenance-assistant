@@ -9,6 +9,11 @@ The application includes a worker-facing Next.js interface for asking grounded
 questions, managing approved manual revisions and checking system readiness
 without developer tools.
 
+It also includes a guided fault-investigation workspace. The assistant asks
+focused questions, retains observations and measurements, ranks competing
+hypotheses, answers follow-ups and proposes only evidence-backed checks within
+an explicit worker-selected safety boundary.
+
 ## Development setup
 
 The project requires Python 3.12 or later. Non-container OCR also requires the
@@ -181,6 +186,20 @@ hidden retrieval context. See
 [`docs/conversation-history.md`](docs/conversation-history.md) for the storage,
 API, privacy and lifecycle design.
 
+### Diagnose a fault
+
+Open **Diagnose a fault** in the web interface and describe the symptom. Select
+the affected equipment or manual when known and record whether the session is
+limited to non-intrusive observation, has been confirmed safe for authorised
+checks, or must stop and escalate.
+
+Each response updates a durable investigation state containing known symptoms,
+worker observations, measurements, completed checks and ranked possible causes.
+Manual-derived checks and diagnostic findings retain verified citations. The
+assistant can answer a follow-up such as “why does that matter?” before
+continuing the investigation. See
+[`docs/guided-diagnostics.md`](docs/guided-diagnostics.md).
+
 ## Run the application API
 
 Start the local HTTP API after installing the project:
@@ -220,6 +239,7 @@ available at `http://127.0.0.1:8000`, including its interactive documentation at
 `/docs`. SQLite uses WAL for API/worker concurrency, while a persistent bounded
 cache avoids recreating identical embeddings. Compose keeps documents, SQLite metadata, vectors and conversation
 history in a named volume when the containers are recreated.
+Guided diagnostic sessions and their evidence snapshots use the same volume.
 
 Use a local `.env` file to change `AMA_API_PORT`; manage the OpenAI key from
 Settings. Stop the

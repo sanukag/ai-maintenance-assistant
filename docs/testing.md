@@ -49,6 +49,10 @@ The project tests ingestion at three levels:
   permissions, save/edit/delete behaviour, environment precedence, fail-closed
   decryption, redacted API responses, live service reload and restart
   persistence.
+- Guided-diagnostic tests cover schema migration, atomic first and follow-up
+  turns, restart persistence, metadata scoping, bounded recent context, typed
+  model output, state continuity, citation validation, intrusive-action gates,
+  stop/escalation consistency, API lifecycle and the worker-facing workflow.
 
 Run the complete suite with:
 

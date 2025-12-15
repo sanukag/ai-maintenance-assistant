@@ -48,6 +48,11 @@ process-environment fallback.
 | `DELETE` | `/documents/{document_id}` | Permanently remove a manual and its data |
 | `POST` | `/search` | Search embedded chunks and return source locations |
 | `POST` | `/answers` | Generate a grounded answer with verified citations |
+| `POST` | `/diagnostic-sessions` | Start a stateful, grounded fault investigation |
+| `POST` | `/diagnostic-sessions/{id}/turns` | Add an observation, reading or follow-up question |
+| `GET` | `/diagnostic-sessions` | List recent investigations |
+| `GET` | `/diagnostic-sessions/{id}` | Reopen one investigation and its state |
+| `DELETE` | `/diagnostic-sessions/{id}` | Permanently delete one investigation |
 | `POST` | `/vector-index/rebuild` | Rebuild Qdrant from authoritative SQLite vectors |
 | `POST` | `/ingestion-jobs` | Persist an upload and queue background ingestion |
 | `GET` | `/ingestion-jobs` | List recent queued, active and completed imports |

@@ -15,6 +15,13 @@ from maintenance_assistant.conversations import (
     ResponseFeedback,
 )
 from maintenance_assistant.credentials import CredentialStatus
+from maintenance_assistant.diagnostics import (
+    DiagnosticSafetyStatus,
+    DiagnosticSession,
+    DiagnosticSessionDetail,
+    DiagnosticState,
+    DiagnosticTurn,
+)
 from maintenance_assistant.ingestion import (
     DocumentLifecycleStatus,
     DocumentMetadata,
@@ -55,6 +62,8 @@ class HealthResponse(BaseModel):
     embedding_model: str | None
     answers: str
     answer_model: str | None
+    diagnostics: str
+    diagnostic_model: str | None
     vector_store: str
     vector_index: str
     reranking: str
@@ -629,6 +638,135 @@ class AnswerResponse(BaseModel):
                 output_tokens=answer.output_tokens,
             ),
         )
+
+
+class DiagnosticSessionCreateRequest(MetadataFilterRequest):
+    message: str = Field(min_length=1, max_length=2_000)
+    document_id: str | None = Field(default=None, min_length=1)
+    safety_status: DiagnosticSafetyStatus = DiagnosticSafetyStatus.UNKNOWN
+
+    @field_validator("message")
+    @classmethod
+    def message_must_contain_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("message must contain text")
+        return stripped
+
+
+class DiagnosticTurnRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=2_000)
+    safety_status: DiagnosticSafetyStatus | None = None
+
+    @field_validator("message")
+    @classmethod
+    def message_must_contain_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("message must contain text")
+        return stripped
+
+
+class DiagnosticStateResponse(BaseModel):
+    symptoms: list[str]
+    observations: list[str]
+    measurements: list[dict[str, str | None]]
+    completed_checks: list[str]
+    hypotheses: list[dict[str, object]]
+    summary: str
+
+    @classmethod
+    def from_state(cls, state: DiagnosticState) -> DiagnosticStateResponse:
+        return cls(
+            symptoms=list(state.symptoms),
+            observations=list(state.observations),
+            measurements=[
+                {"name": item.name, "value": item.value, "unit": item.unit}
+                for item in state.measurements
+            ],
+            completed_checks=list(state.completed_checks),
+            hypotheses=[
+                {
+                    "title": item.title,
+                    "likelihood": item.likelihood.value,
+                    "rationale": item.rationale,
+                    "supporting_source_ids": list(item.supporting_source_ids),
+                    "contrary_observations": list(item.contrary_observations),
+                }
+                for item in state.hypotheses
+            ],
+            summary=state.summary,
+        )
+
+
+class DiagnosticTurnResponse(BaseModel):
+    id: str
+    sequence: int
+    role: str
+    content: str
+    action: str | None
+    payload: dict[str, object]
+    created_at: datetime
+
+    @classmethod
+    def from_turn(cls, turn: DiagnosticTurn) -> DiagnosticTurnResponse:
+        return cls(
+            id=turn.id,
+            sequence=turn.sequence,
+            role=turn.role.value,
+            content=turn.content,
+            action=turn.action.value if turn.action else None,
+            payload=turn.payload,
+            created_at=turn.created_at,
+        )
+
+
+class DiagnosticSessionSummaryResponse(BaseModel):
+    id: str
+    title: str
+    status: str
+    safety_status: str
+    document_id: str | None
+    metadata: DocumentMetadataResponse
+    state: DiagnosticStateResponse
+    created_at: datetime
+    updated_at: datetime
+    turn_count: int
+
+    @classmethod
+    def from_session(
+        cls, session: DiagnosticSession
+    ) -> DiagnosticSessionSummaryResponse:
+        return cls(
+            id=session.id,
+            title=session.title,
+            status=session.status.value,
+            safety_status=session.safety_status.value,
+            document_id=session.document_id,
+            metadata=DocumentMetadataResponse.from_metadata(session.metadata),
+            state=DiagnosticStateResponse.from_state(session.state),
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+            turn_count=session.turn_count,
+        )
+
+
+class DiagnosticSessionResponse(BaseModel):
+    session: DiagnosticSessionSummaryResponse
+    turns: list[DiagnosticTurnResponse]
+
+    @classmethod
+    def from_detail(cls, detail: DiagnosticSessionDetail) -> DiagnosticSessionResponse:
+        return cls(
+            session=DiagnosticSessionSummaryResponse.from_session(detail.session),
+            turns=[DiagnosticTurnResponse.from_turn(turn) for turn in detail.turns],
+        )
+
+
+class DiagnosticSessionListResponse(BaseModel):
+    items: list[DiagnosticSessionSummaryResponse]
+    limit: int
+    offset: int
 
 
 class ConversationSummaryResponse(BaseModel):

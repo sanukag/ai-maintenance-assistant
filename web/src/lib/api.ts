@@ -10,6 +10,8 @@ export type Health = {
   embedding_model: string | null;
   answers: "enabled" | "disabled";
   answer_model: string | null;
+  diagnostics: "enabled" | "disabled";
+  diagnostic_model: string | null;
   vector_store: "sqlite" | "qdrant";
   vector_index: "available" | "unavailable" | "disabled";
   reranking: "enabled" | "disabled";
@@ -174,6 +176,59 @@ export type ConversationMessage = {
 export type ConversationDetail = {
   conversation: ConversationSummary;
   messages: ConversationMessage[];
+};
+
+export type DiagnosticMeasurement = { name: string; value: string; unit: string | null };
+export type DiagnosticHypothesis = {
+  title: string;
+  likelihood: "low" | "medium" | "high";
+  rationale: string;
+  supporting_source_ids: string[];
+  contrary_observations: string[];
+};
+export type DiagnosticState = {
+  symptoms: string[];
+  observations: string[];
+  measurements: DiagnosticMeasurement[];
+  completed_checks: string[];
+  hypotheses: DiagnosticHypothesis[];
+  summary: string;
+};
+export type DiagnosticCitation = ConversationCitation;
+export type DiagnosticTurn = {
+  id: string;
+  sequence: number;
+  role: "user" | "assistant";
+  content: string;
+  action: "ask_question" | "request_observation" | "request_measurement" | "suggest_check" | "answer_question" | "report_diagnosis" | "escalate" | "mark_resolved" | null;
+  payload: {
+    intrusive?: boolean;
+    requires_safety_confirmation?: boolean;
+    citations?: DiagnosticCitation[];
+    model?: string;
+  };
+  created_at: string;
+};
+export type DiagnosticSessionSummary = {
+  id: string;
+  title: string;
+  status: "active" | "resolved" | "escalated";
+  safety_status: "unknown" | "non_intrusive_only" | "confirmed_safe" | "stop";
+  document_id: string | null;
+  metadata: DocumentMetadata;
+  state: DiagnosticState;
+  created_at: string;
+  updated_at: string;
+  turn_count: number;
+};
+export type DiagnosticSessionDetail = {
+  session: DiagnosticSessionSummary;
+  turns: DiagnosticTurn[];
+};
+export type DiagnosticSessionList = {
+  items: DiagnosticSessionSummary[];
+  limit: number;
+  offset: number;
 };
 
 export type ApiFailure = {

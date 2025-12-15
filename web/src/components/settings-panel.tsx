@@ -105,6 +105,7 @@ export function SettingsPanel() {
     { label: "Vector index", value: health?.vector_index === "available" ? "Available" : health?.vector_index === "disabled" ? "SQLite mode" : "Fallback active", detail: health?.vector_store === "qdrant" ? "Qdrant HNSW index with SQLite fallback" : "SQLite cosine search", available: health?.vector_index !== "unavailable" },
     { label: "Evidence reranking", value: health?.reranking === "enabled" ? "Enabled" : "Disabled", detail: health?.rerank_model ?? "Fused retrieval order", available: health?.reranking === "enabled" },
     { label: "Answer generation", value: health?.answers === "enabled" ? "Enabled" : "Disabled", detail: health?.answer_model ?? "No model configured", available: health?.answers === "enabled" },
+    { label: "Guided diagnostics", value: health?.diagnostics === "enabled" ? "Enabled" : "Disabled", detail: health?.diagnostic_model ?? "No model configured", available: health?.diagnostics === "enabled" },
   ];
 
   return (

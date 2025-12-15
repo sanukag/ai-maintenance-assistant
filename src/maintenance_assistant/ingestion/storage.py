@@ -315,7 +315,41 @@ CREATE TABLE IF NOT EXISTS external_credentials (
 );
 """
 
-_CURRENT_SCHEMA_VERSION = 13
+_MIGRATION_VERSION_14 = """
+CREATE TABLE IF NOT EXISTS diagnostic_sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL CHECK (length(title) > 0),
+    status TEXT NOT NULL CHECK (status IN ('active', 'resolved', 'escalated')),
+    safety_status TEXT NOT NULL CHECK (
+        safety_status IN ('unknown', 'non_intrusive_only', 'confirmed_safe', 'stop')
+    ),
+    document_id TEXT REFERENCES documents(id) ON DELETE SET NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    state_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS diagnostic_turns (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES diagnostic_sessions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL CHECK (sequence >= 0),
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL CHECK (length(content) > 0),
+    action TEXT,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    UNIQUE (session_id, sequence)
+);
+
+CREATE INDEX IF NOT EXISTS diagnostic_sessions_updated_idx
+ON diagnostic_sessions(updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS diagnostic_turns_session_sequence_idx
+ON diagnostic_turns(session_id, sequence);
+"""
+
+_CURRENT_SCHEMA_VERSION = 14
 
 
 class LocalDocumentStore:
@@ -409,6 +443,10 @@ class LocalDocumentStore:
                         connection.executescript(_MIGRATION_VERSION_13)
                         connection.execute("PRAGMA user_version = 13")
                         version = 13
+                    if version == 13:
+                        connection.executescript(_MIGRATION_VERSION_14)
+                        connection.execute("PRAGMA user_version = 14")
+                        version = 14
                     if version != _CURRENT_SCHEMA_VERSION:
                         raise sqlite3.DatabaseError(
                             f"Unsupported database schema version: {version}"
