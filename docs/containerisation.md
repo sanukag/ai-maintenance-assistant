@@ -40,8 +40,9 @@ Follow the interface logs with `docker compose logs --follow web`.
 
 ## Configuration
 
-Docker Compose automatically reads a `.env` file in the repository root. Copy
-the example before changing runtime values:
+Docker Compose automatically reads a `.env` file in the repository root when
+one exists. Copy the example only if you need to change runtime values such as
+ports:
 
 ```bash
 cp .env.example .env
@@ -68,7 +69,9 @@ Set `AMA_VECTOR_STORE=sqlite` to bypass Qdrant without removing its stored data.
 receive the same values through Compose.
 
 Embeddings, reranking, visual analysis and grounded answers remain disabled
-until an OpenAI API key is available. Prefer adding it from the Settings page.
+until an OpenAI API key is available. You do not need to add the key to `.env`
+or edit an environment file: open the worker interface and add it under
+**Settings → API keys**.
 It is encrypted in the shared application-data volume, takes effect immediately
 and survives container recreation.
 

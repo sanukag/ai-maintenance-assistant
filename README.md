@@ -30,6 +30,12 @@ python -m pip install -e '.[test]'
 pytest
 ```
 
+To run the complete local stack in containers instead, install Docker Desktop
+or Docker Engine with the Compose plugin, then follow the Docker instructions
+below. You do not need to create or edit a `.env` file just to provide the
+OpenAI API key: enter it in the application's **Settings → API keys** page
+after the application starts. The key is stored in the local data volume.
+
 The web interface requires Node.js 20.9 or later. Run it alongside `ama-api`:
 
 ```bash
@@ -41,11 +47,11 @@ npm run dev
 Open `http://127.0.0.1:3000`. The Next.js server connects to the local API at
 `http://127.0.0.1:8000` by default.
 
-Copy `.env.example` to `.env` when you need to override the local defaults.
-Configuration is read from environment variables; `.env` files are not loaded
-automatically by the package and must be loaded by the chosen runtime. External
-API keys are managed separately from the Settings page and persist in encrypted
-local storage. `OPENAI_API_KEY` remains available as an environment fallback.
+Copy `.env.example` to `.env` only when you need to override local defaults
+such as ports or storage settings. Configuration is read from environment
+variables; `.env` files are not loaded automatically by the package and must be
+loaded by the chosen runtime. The OpenAI API key is entered through **Settings
+→ API keys** and does not need to be added to `.env`.
 
 ## Project layout
 
@@ -241,8 +247,9 @@ cache avoids recreating identical embeddings. Compose keeps documents, SQLite me
 history in a named volume when the containers are recreated.
 Guided diagnostic sessions and their evidence snapshots use the same volume.
 
-Use a local `.env` file to change `AMA_API_PORT`; manage the OpenAI key from
-Settings. Stop the
+You do not need to edit an environment file for the OpenAI API key. Open the
+worker interface and enter it through **Settings → API keys**. Use a local
+`.env` file only to change runtime values such as `AMA_API_PORT`. Stop the
 service without deleting its stored data with:
 
 ```bash
